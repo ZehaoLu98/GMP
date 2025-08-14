@@ -15,4 +15,17 @@ set(libdir "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 set_target_properties(gmp PROPERTIES
   OUTPUT_NAME gmp
   ARCHIVE_OUTPUT_DIRECTORY "${libdir}"
-)
+) 
+
+# --- CUPTI ---
+find_package(CUDAToolkit REQUIRED COMPONENTS cupti)
+
+# Some CMake/CUDA versions provide an imported target CUDA::cupti; otherwise use variables.
+if (TARGET CUDA::cupti)
+  target_link_libraries(gmp PUBLIC CUDA::cupti)
+else()
+  # Fallback names/vars provided by FindCUDAToolkit
+  # CUDAToolkit_CUPTI_LIBRARY and CUDAToolkit_CUPTI_INCLUDE_DIR should exist
+  target_link_libraries(gmp PUBLIC "${CUDAToolkit_CUPTI_LIBRARY}")
+  target_include_directories(gmp PUBLIC "${CUDAToolkit_CUPTI_INCLUDE_DIR}")
+endif()
