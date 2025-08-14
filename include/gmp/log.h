@@ -11,7 +11,7 @@
 // 2: WARNING
 // 3: SYS INFO
 // 4: DEBUG INFO
-#define GMP_LOG_LEVEL 3
+#define GMP_LOG_LEVEL 4
 
 #define GMP_LOG(fmt) \
   ([&]() -> std::ostream& { \
@@ -27,5 +27,7 @@
   do { if (GMP_LOG_LEVEL >= 2) GMP_LOG("WARNING") << msg << std::endl; } while (0)
 #define GMP_LOG_INFO(msg) \
   do { if (GMP_LOG_LEVEL >= 3) GMP_LOG("INFO") << msg << std::endl; } while (0)
+#define GMP_LOG_DEBUG(msg) \
+  do { if (GMP_LOG_LEVEL >= 4) GMP_LOG("DEBUG") << msg << std::endl; } while (0)
 
 #endif  // GMP_LLMC_UTILS_LOG_H
