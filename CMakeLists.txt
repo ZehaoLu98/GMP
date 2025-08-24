@@ -22,7 +22,10 @@ find_package(CUDAToolkit REQUIRED COMPONENTS cupti)
 
 # Some CMake/CUDA versions provide an imported target CUDA::cupti; otherwise use variables.
 if (TARGET CUDA::cupti)
-  target_link_libraries(gmp PUBLIC CUDA::cupti)
+  target_link_libraries(gmp PUBLIC CUDA::cupti     
+                                   CUDA::cuda_driver      # libcuda (driver API)
+                                   CUDA::cudart           # runtime
+                                   )
 else()
   # Fallback names/vars provided by FindCUDAToolkit
   # CUDAToolkit_CUPTI_LIBRARY and CUDAToolkit_CUPTI_INCLUDE_DIR should exist

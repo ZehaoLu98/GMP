@@ -3,6 +3,7 @@
 #define GMP_UTIL_H
 
 #include <cupti.h>
+#include <gmp/data_struct.h>
 
 #define CUPTI_CALL(call)                                                         \
     do                                                                           \
@@ -17,5 +18,35 @@
             exit(-1);                                                            \
         }                                                                        \
     } while (0)
+
+#define DRIVER_API_CALL(apiFunctionCall)                                            \
+do                                                                                  \
+{                                                                                   \
+    CUresult _status = apiFunctionCall;                                             \
+    if (_status != CUDA_SUCCESS)                                                    \
+    {                                                                               \
+        const char *pErrorString;                                                   \
+        cuGetErrorString(_status, &pErrorString);                                   \
+                                                                                    \
+        std::cerr << "\n\nError: " << __FILE__ << ":" << __LINE__ << ": Function "  \
+        << #apiFunctionCall << " failed with error(" << _status << "): "            \
+        << pErrorString << ".\n\n";                                                 \
+                                                                                    \
+        exit(EXIT_FAILURE);                                                         \
+    }                                                                               \
+} while (0)
+
+#define GMP_API_CALL(apiFunctionCall)                                            \
+do                                                                                  \
+{                                                                                   \
+    GmpResult _status = apiFunctionCall;                                             \
+    if (_status != GmpResult::SUCCESS)                                                    \
+    {                                                                               \
+        std::cerr << "\n\nError: " << __FILE__ << ":" << __LINE__ << ": Function "  \
+        << #apiFunctionCall << ".\n\n";                                             \
+                                                                                    \
+        exit(EXIT_FAILURE);                                                         \
+    }                                                                               \
+} while (0)
 
 #endif // GMP_UTIL_H

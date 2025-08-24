@@ -9,10 +9,12 @@
 #include <cupti.h>
 #include <map>
 #include <memory>
+#include <cuda.h>
 #include "gmp/log.h"
 #include "gmp/callback.h"
 #include "gmp/util.h"
 #include "gmp/data_struct.h"
+#include "gmp/range_profiling.h"
 
 #if GMP_LOG_LEVEL <= GMP_LOG_LEVEL_INFO
 #define GMP_PROFILING(name, func, ...) \
@@ -31,18 +33,6 @@
     GMP_LOG("INFO") << name << " finished in " << duration << " microseconds." << std::endl;    \
   } while (0)
 #endif
-
-enum class GmpResult
-{
-  SUCCESS = 0,
-  WARNING = 1,
-  ERROR = 2,
-};
-
-enum class GmpProfileType
-{
-  CONCURRENT_KERNEL = 0,
-};
 
 // Abstract Node
 class GmpProfileSession
@@ -70,21 +60,22 @@ public:
     return runtimeData;
   }
 
-  CUpti_SubscriberHandle getSubscriberHandle() const
+  CUpti_SubscriberHandle getRuntimeSubscriberHandle() const
   {
-    return subscriber;
+    return runtimeSubscriber;
   }
 
-  void setSubscriberHandle(CUpti_SubscriberHandle subscriber)
+  void setRuntimeHandle(CUpti_SubscriberHandle runtimeSubscriber)
   {
-    this->subscriber = subscriber;
+    this->runtimeSubscriber = runtimeSubscriber;
   }
 
 protected:
-  std::string sessionName;     // Name of the profiling session
+  std::string sessionName;      // Name of the profiling session
   ApiRuntimeRecord runtimeData; // Data structure to hold timing information
-  CUpti_SubscriberHandle subscriber;
+  CUpti_SubscriberHandle runtimeSubscriber;
   bool is_active = true;
+  CUcontext context = 0;
 };
 
 // Concrete Node
@@ -123,28 +114,7 @@ public:
 
   // Attempt to add a session of a specific type.
   // If the last session of that type is active, this function does nothing.
-  GmpResult addSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr)
-  {
-    assert(sessionPtr != nullptr);
-    CUpti_SubscriberHandle subscriber;
-    if (ActivityMap[type].empty() || !ActivityMap[type].back()->isActive())
-    {
-      CUPTI_CALL(cuptiSubscribe(&subscriber, (CUpti_CallbackFunc)getTimestampCallback, (void *)&sessionPtr->getRuntimeData()));
-      CUPTI_CALL(cuptiEnableDomain(1, subscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
-      sessionPtr->setSubscriberHandle(subscriber);
-
-      GMP_LOG_DEBUG("Session " + sessionPtr->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " added.");
-      
-      ActivityMap[type].push_back(std::move(sessionPtr));
-      
-      return GmpResult::SUCCESS;
-    }
-    else
-    {
-      GMP_LOG_WARNING("Session " + ActivityMap[type].back()->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " is already active. Cannot add a new session.");
-      return GmpResult::ERROR;
-    }
-  }
+  GmpResult startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr);
 
   template <typename DerivedSession>
   using AccumulateFunc = std::function<void(DerivedSession *)>;
@@ -167,28 +137,7 @@ public:
     }
   }
 
-  GmpResult endSession(GmpProfileType type)
-  {
-    GMP_LOG_DEBUG("Ending session");
-    if (ActivityMap[type].empty())
-    {
-      GMP_LOG_ERROR("No active session of type " + std::to_string(static_cast<int>(type)) + " found.");
-      return GmpResult::ERROR;
-    }
-    auto &sessionPtr = ActivityMap[type].back();
-    if (sessionPtr->isActive())
-    {
-      CUpti_SubscriberHandle subscriber = sessionPtr->getSubscriberHandle();
-      CUPTI_CALL(cuptiUnsubscribe(subscriber));
-
-      sessionPtr->report();
-      sessionPtr->deactivate();
-      GMP_LOG_DEBUG("Session of type " + std::to_string(static_cast<int>(type)) + " ended.");
-      return GmpResult::SUCCESS;
-    }
-    GMP_LOG_WARNING("Session of type " + std::to_string(static_cast<int>(type)) + " is already inactive.");
-    return GmpResult::WARNING;
-  }
+  GmpResult endSession(GmpProfileType type);
 
 private:
   std::map<GmpProfileType, std::vector<std::unique_ptr<GmpProfileSession>>> ActivityMap;
@@ -200,73 +149,69 @@ class GmpProfiler
   GmpProfiler &operator=(const GmpProfiler &) = delete;
 
 public:
-  GmpProfiler()
-  {
-    instance = this;
-    CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-    CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
-                                              &GmpProfiler::bufferCompletedThunk));
-  }
+  GmpProfiler(int maxNumOfRanges = 1000, int minNestingLevel = 1, int numOfNestingLevel = 5);
 
-  ~GmpProfiler()
-  {
-    CUPTI_CALL(cuptiActivityFlushAll(0));
-    CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-    if (instance == this)
-      instance = nullptr;
-  }
+  ~GmpProfiler();
 
   static GmpProfiler *getInstance()
   {
     return instance;
   }
 
-  GmpResult startProfiling(std::string name, GmpProfileType type)
+  void startRangeProfiling()
   {
-    GMP_LOG_DEBUG("Starting profiling for type: " + std::to_string(static_cast<int>(type)) + " with name: " + name);
-
-    switch (type)
-    {
-    case GmpProfileType::CONCURRENT_KERNEL:
-      CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-      return sessionManager.addSession(
-          GmpProfileType::CONCURRENT_KERNEL,
-          std::make_unique<GmpConcurrentKernelSession>(name));
-    default:
-      GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
-      return GmpResult::ERROR;
-    }
+    CUPTI_API_CALL(rangeProfilerTargetPtr->StartRangeProfiler());
   }
 
-  GmpResult endProfiling(GmpProfileType type)
+  void stopRangeProfiling()
   {
-    switch (type)
-    {
-      case GmpProfileType::CONCURRENT_KERNEL:
-      {
+    CUPTI_API_CALL(rangeProfilerTargetPtr->StopRangeProfiler());
+  }
 
-        CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-        GMP_LOG_DEBUG("Flusing all called");
-        CUPTI_CALL(cuptiActivityFlushAll(0));
-        GMP_LOG_DEBUG("Ending profiling for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + sessionManager.getSessionName(type));
-        auto result = sessionManager.endSession(type);
-        if (result != GmpResult::SUCCESS)
-        {
-          GMP_LOG_ERROR("Failed to end profiling for type: " + std::to_string(static_cast<int>(type)));
-        }
-        return result;
-      }
-      default:
-      {
-        GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
-        return GmpResult::ERROR;
-      }
-    }
+  // GmpResult RangeProfile(char *name, std::function<void()> func);
+
+  // Range Profiling API
+  GmpResult pushRange(const char *rangeName);
+
+  // Activity API
+  GmpResult pushRange(const std::string &name, GmpProfileType type);
+
+  // Range Profiling API
+  GmpResult popRange();
+
+  // Activity API
+  GmpResult popRange(const std::string &name, GmpProfileType type);
+
+  // Called after end of range profiling
+  void printProfilerRanges();
+
+  bool isAllPassSubmitted()
+  {
+    return rangeProfilerTargetPtr->IsAllPassSubmitted();
+  }
+
+  void decodeCounterData()
+  {
+    CUPTI_API_CALL(rangeProfilerTargetPtr->DecodeCounterData());
   }
 
 private:
   static GmpProfiler *instance;
+  RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
+  CuptiProfilerHostPtr cuptiProfilerHost = nullptr;
   SessionManager sessionManager;
+  std::vector<uint8_t> counterDataImage;
+  std::vector<const char *> metrics = {
+      "sm__warps_active.avg.pct_of_peak_sustained_active",
+      "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+      "smsp__warps_launched.sum",
+      "smsp__inst_executed.avg",
+      "smsp__inst_issued.sum",
+      "gpu__time_duration.sum",
+      "dram__throughput.avg.pct_of_peak_sustained_elapsed",
+      "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
+      "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
+      "l1tex__t_sector_hit_rate.pct"};
 
   static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
   {
@@ -281,61 +226,9 @@ private:
       instance->bufferCompletedImpl(ctx, streamId, buffer, size, validSize);
   }
 
-  void bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
-  {
-    *size = 16 * 1024;
-    *buffer = (uint8_t *)malloc(*size);
-    *maxNumRecords = 0;
-  }
+  void bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords);
 
   void bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
-                           uint8_t *buffer, size_t size, size_t validSize)
-  {
-    CUptiResult status;
-    CUpti_Activity *record = nullptr;
-    GMP_LOG_DEBUG("Buffer completion callback called");
-    for (;;)
-    {
-      status = cuptiActivityGetNextRecord(buffer, validSize, &record);
-      if (status == CUPTI_SUCCESS)
-      {
-        if (record->kind == CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL)
-        {
-          auto *kernel = (CUpti_ActivityKernel8 *)record;
-          printf("CUPTI: Kernel \"%s\" launched on stream %u, grid (%u,%u,%u), block (%u,%u,%u)\n",
-                 kernel->name, kernel->streamId,
-                 kernel->gridX, kernel->gridY, kernel->gridZ,
-                 kernel->blockX, kernel->blockY, kernel->blockZ);
-          auto result = sessionManager.accumulate<GmpConcurrentKernelSession>(
-              GmpProfileType::CONCURRENT_KERNEL,
-              [](GmpConcurrentKernelSession *sessionPtr)
-              { sessionPtr->num_calls++; });
-          if (result != GmpResult::SUCCESS)
-          {
-            GMP_LOG_ERROR("Failed to accumulate concurrent kernel session.");
-          }
-        }
-      }
-      else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED)
-      {
-        break;
-      }
-      else
-      {
-        CUPTI_CALL(status);
-      }
-    }
-    size_t dropped = 0;
-    cuptiActivityGetNumDroppedRecords(ctx, streamId, &dropped);
-    if (dropped != 0)
-    {
-      printf("CUPTI: Dropped %zu activity records\n", dropped);
-    }
-    free(buffer);
-    GMP_LOG_DEBUG("Buffer completion callback ended");
-  }
+                           uint8_t *buffer, size_t size, size_t validSize);
 };
-
-inline GmpProfiler *GmpProfiler::instance = new GmpProfiler();
-
 #endif // GMP_PROFILE_H
