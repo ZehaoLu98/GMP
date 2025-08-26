@@ -227,9 +227,7 @@ CUptiResult RangeProfilerTarget::PushRange(const char *rangeName)
     CUpti_RangeProfiler_PushRange_Params pushRangeParams{CUpti_RangeProfiler_PushRange_Params_STRUCT_SIZE};
     pushRangeParams.pRangeProfilerObject = rangeProfilerObject;
     pushRangeParams.pRangeName = rangeName;
-    printf("pushrange 2\n");
     CUPTI_API_CALL(cuptiRangeProfilerPushRange(&pushRangeParams));
-    printf("pushrange 3\n");
     return CUPTI_SUCCESS;
 }
 

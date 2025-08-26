@@ -16,6 +16,10 @@
 #include "gmp/data_struct.h"
 #include "gmp/range_profiling.h"
 
+#define MAX_NUM_RANGES 200
+#define MAX_NUM_NESTING_LEVEL 2
+#define MIN_NESTING_LEVEL 1
+
 #if GMP_LOG_LEVEL <= GMP_LOG_LEVEL_INFO
 #define GMP_PROFILING(name, func, ...) \
   do                                   \
@@ -149,12 +153,74 @@ class GmpProfiler
   GmpProfiler &operator=(const GmpProfiler &) = delete;
 
 public:
-  GmpProfiler(int maxNumOfRanges = 1000, int minNestingLevel = 1, int numOfNestingLevel = 5);
+  GmpProfiler();
 
   ~GmpProfiler();
 
   static GmpProfiler *getInstance()
   {
+    if (!instance)
+    {
+      printf("initializing gmp profiler instance\n");
+      instance = new GmpProfiler();
+
+      // CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+      // CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
+      //                                           &GmpProfiler::bufferCompletedThunk));
+      instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
+
+      // Get the current ctx for the device
+      CUdevice cuDevice;
+      DRIVER_API_CALL(cuDeviceGet(&cuDevice, 0));
+      int computeCapabilityMajor = 0, computeCapabilityMinor = 0;
+      DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice));
+      DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice));
+      printf("Compute Capability of Device: %d.%d\n", computeCapabilityMajor, computeCapabilityMinor);
+
+      if (computeCapabilityMajor < 7 || (computeCapabilityMajor == 7 && computeCapabilityMinor < 5))
+      {
+        std::cerr << "Range Profiling is supported only on devices with compute capability 7.5 and above" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+
+      RangeProfilerConfig config;
+      // default config values
+      config.maxNumOfRanges = MAX_NUM_RANGES;
+      config.minNestingLevel = MIN_NESTING_LEVEL;
+      config.numOfNestingLevel = MAX_NUM_NESTING_LEVEL;
+
+      // Should not create a context!!!!!!!!!
+      CUcontext cuContext;
+      // DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
+      DRIVER_API_CALL(cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
+      DRIVER_API_CALL(cuCtxSetCurrent(cuContext)); // matches what Eigen/Runtime use
+      instance->rangeProfilerTargetPtr = std::make_shared<RangeProfilerTarget>(cuContext, config);
+
+      // Get chip name
+      std::string chipName;
+      CUPTI_CALL(RangeProfilerTarget::GetChipName(cuDevice, chipName));
+ 
+      // Get Counter availability image
+      std::vector<uint8_t> counterAvailabilityImage;
+      CUPTI_CALL(RangeProfilerTarget::GetCounterAvailabilityImage(cuContext, counterAvailabilityImage));
+
+      // Create config image
+      std::vector<uint8_t> configImage;
+      instance->cuptiProfilerHost->SetUp(chipName, counterAvailabilityImage);
+      CUPTI_CALL(instance->cuptiProfilerHost->CreateConfigImage(instance->metrics, configImage));
+
+      // Enable Range profiler
+      CUPTI_CALL(instance->rangeProfilerTargetPtr->EnableRangeProfiler());
+
+      // Create CounterData Image
+      CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
+
+      CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
+          CUPTI_UserRange,
+          CUPTI_UserReplay,
+          configImage,
+          instance->counterDataImage));
+    }
     return instance;
   }
 
@@ -208,10 +274,12 @@ private:
       "smsp__inst_executed.avg",
       "smsp__inst_issued.sum",
       "gpu__time_duration.sum",
-      "dram__throughput.avg.pct_of_peak_sustained_elapsed",
-      "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
-      "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
-      "l1tex__t_sector_hit_rate.pct"};
+      "sm__ctas_launched.sum"
+      // "dram__throughput.avg.pct_of_peak_sustained_elapsed",
+      // "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
+      // "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
+      // "l1tex__t_sector_hit_rate.pct"
+  };
 
   static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
   {

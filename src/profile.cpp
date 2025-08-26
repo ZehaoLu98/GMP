@@ -1,6 +1,6 @@
 #include "gmp/profile.h"
 
-GmpProfiler *GmpProfiler::instance = new GmpProfiler();
+GmpProfiler *GmpProfiler::instance = nullptr;
 
 GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr)
 {
@@ -48,58 +48,8 @@ GmpResult SessionManager::endSession(GmpProfileType type)
     return GmpResult::WARNING;
 }
 
-GmpProfiler::GmpProfiler(int maxNumOfRanges, int minNestingLevel, int numOfNestingLevel)
+GmpProfiler::GmpProfiler()
 {
-    instance = this;
-    // CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-    // CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
-    //                                           &GmpProfiler::bufferCompletedThunk));
-
-    RangeProfilerConfig config;
-    config.maxNumOfRanges = maxNumOfRanges;
-    config.minNestingLevel = minNestingLevel;
-    config.numOfNestingLevel = numOfNestingLevel;
-
-    cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
-
-    DRIVER_API_CALL(cuInit(0));
-    // Get the current ctx for the device
-    CUdevice cuDevice;
-    DRIVER_API_CALL(cuDeviceGet(&cuDevice, 0));
-    int computeCapabilityMajor = 0, computeCapabilityMinor = 0;
-    DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice));
-    DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice));
-    printf("Compute Capability of Device: %d.%d\n", computeCapabilityMajor, computeCapabilityMinor);
-
-    // Create a context
-    CUcontext cuContext;
-    DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
-    rangeProfilerTargetPtr = std::make_shared<RangeProfilerTarget>(cuContext, config);
-
-    // Get chip name
-    std::string chipName;
-    CUPTI_CALL(RangeProfilerTarget::GetChipName(cuDevice, chipName));
-
-    // Get Counter availability image
-    std::vector<uint8_t> counterAvailabilityImage;
-    CUPTI_CALL(RangeProfilerTarget::GetCounterAvailabilityImage(cuContext, counterAvailabilityImage));
-
-    // Create config image
-    std::vector<uint8_t> configImage;
-    cuptiProfilerHost->SetUp(chipName, counterAvailabilityImage);
-    CUPTI_CALL(cuptiProfilerHost->CreateConfigImage(metrics, configImage));
-
-    // Enable Range profiler
-    CUPTI_CALL(rangeProfilerTargetPtr->EnableRangeProfiler());
-
-    // Create CounterData Image
-    CUPTI_CALL(rangeProfilerTargetPtr->CreateCounterDataImage(metrics, counterDataImage));
-
-    CUPTI_CALL(rangeProfilerTargetPtr->SetConfig(
-        CUPTI_UserRange,
-        CUPTI_UserReplay,
-        configImage,
-        counterDataImage));
 }
 
 GmpProfiler::~GmpProfiler()
@@ -150,6 +100,7 @@ GmpResult GmpProfiler::popRange()
 {
     if (rangeProfilerTargetPtr)
     {
+        cudaDeviceSynchronize();
         CUPTI_API_CALL(rangeProfilerTargetPtr->PopRange());
         return GmpResult::SUCCESS;
     }
