@@ -223,7 +223,6 @@ CUptiResult RangeProfilerTarget::StopRangeProfiler()
 
 CUptiResult RangeProfilerTarget::PushRange(const char *rangeName)
 {
-    printf("Pushing Range: %s\n", rangeName);
     CUpti_RangeProfiler_PushRange_Params pushRangeParams{CUpti_RangeProfiler_PushRange_Params_STRUCT_SIZE};
     pushRangeParams.pRangeProfilerObject = rangeProfilerObject;
     pushRangeParams.pRangeName = rangeName;
@@ -233,7 +232,6 @@ CUptiResult RangeProfilerTarget::PushRange(const char *rangeName)
 
 CUptiResult RangeProfilerTarget::PopRange()
 {
-    printf("Popping Range\n");
     CUpti_RangeProfiler_PopRange_Params popRangeParams{CUpti_RangeProfiler_PopRange_Params_STRUCT_SIZE};
     popRangeParams.pRangeProfilerObject = rangeProfilerObject;
     CUPTI_API_CALL(cuptiRangeProfilerPopRange(&popRangeParams));

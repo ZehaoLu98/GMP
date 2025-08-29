@@ -1,23 +1,29 @@
+#ifndef GMP_PROFILE_H
+#define GMP_PROFILE_H
 #include <functional>
 #include <vector>
 #include <cassert>
 #include <memory>
-#ifndef GMP_PROFILE_H
-#define GMP_PROFILE_H
 #include <stdio.h>
 #include <stdlib.h>
-#include <cupti.h>
 #include <map>
 #include <memory>
 #include <cuda.h>
+#include "gmp/range_profiling.h"
+#include "gmp/data_struct.h"
+
+#define USE_CUPTI
+
+#ifdef USE_CUPTI
+
+#include <cupti.h>
 #include "gmp/log.h"
 #include "gmp/callback.h"
 #include "gmp/util.h"
-#include "gmp/data_struct.h"
-#include "gmp/range_profiling.h"
 
+#define ENABLE_USER_RANGE false
 #define MAX_NUM_RANGES 200
-#define MAX_NUM_NESTING_LEVEL 2
+#define MAX_NUM_NESTING_LEVEL 1
 #define MIN_NESTING_LEVEL 1
 
 #if GMP_LOG_LEVEL <= GMP_LOG_LEVEL_INFO
@@ -146,6 +152,8 @@ public:
 private:
   std::map<GmpProfileType, std::vector<std::unique_ptr<GmpProfileSession>>> ActivityMap;
 };
+#endif
+
 
 class GmpProfiler
 {
@@ -161,9 +169,8 @@ public:
   {
     if (!instance)
     {
-      printf("initializing gmp profiler instance\n");
       instance = new GmpProfiler();
-
+      #ifdef USE_CUPTI
       // CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
       // CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
       //                                           &GmpProfiler::bufferCompletedThunk));
@@ -216,22 +223,27 @@ public:
       CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
 
       CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
-          CUPTI_UserRange,
-          CUPTI_UserReplay,
+        ENABLE_USER_RANGE? CUPTI_UserRange : CUPTI_AutoRange,
+          ENABLE_USER_RANGE? CUPTI_UserReplay : CUPTI_KernelReplay,
           configImage,
           instance->counterDataImage));
+      #endif
     }
     return instance;
   }
 
   void startRangeProfiling()
   {
+    #ifdef USE_CUPTI
     CUPTI_API_CALL(rangeProfilerTargetPtr->StartRangeProfiler());
+    #endif
   }
 
   void stopRangeProfiling()
   {
+    #ifdef USE_CUPTI
     CUPTI_API_CALL(rangeProfilerTargetPtr->StopRangeProfiler());
+    #endif
   }
 
   // GmpResult RangeProfile(char *name, std::function<void()> func);
@@ -253,45 +265,78 @@ public:
 
   bool isAllPassSubmitted()
   {
+    #ifdef USE_CUPTI
     return rangeProfilerTargetPtr->IsAllPassSubmitted();
+    #endif
+    return true;
   }
 
   void decodeCounterData()
   {
+    #ifdef USE_CUPTI
     CUPTI_API_CALL(rangeProfilerTargetPtr->DecodeCounterData());
+    #endif
   }
 
 private:
   static GmpProfiler *instance;
+
+#ifdef USE_CUPTI
   RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
   CuptiProfilerHostPtr cuptiProfilerHost = nullptr;
   SessionManager sessionManager;
   std::vector<uint8_t> counterDataImage;
   std::vector<const char *> metrics = {
-      "sm__warps_active.avg.pct_of_peak_sustained_active",
-      "sm__throughput.avg.pct_of_peak_sustained_elapsed",
-      "smsp__warps_launched.sum",
-      "smsp__inst_executed.avg",
-      "smsp__inst_issued.sum",
-      "gpu__time_duration.sum",
-      "sm__ctas_launched.sum"
+      // "dram__bytes_read.sum",
+      // "dram__bytes_write.sum",
+      // "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
+
+      // "sm__warps_active.avg.pct_of_peak_sustained_active",
+      // "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+      // "smsp__warps_launched.sum",
+      // "smsp__inst_executed.avg",
+      // "smsp__inst_issued.sum",
+      // "gpu__time_duration.sum",
+      "gpc__cycles_active.max",
+      "gpc__cycles_elapsed.max",
+      // "gpu__time_active.sum",
+      // "gpu__time_duration_measured_wallclock.sum",
+      // "gpu__cycles_active.sum",
+      // "gpu__cycles_elapsed.sum",
+      // "sm__cycles_active.sum",
+      // "smsp__cycles_active.sum",
+      // "smsp__inst_executed.sum",
       // "dram__throughput.avg.pct_of_peak_sustained_elapsed",
+      // "dram__bytes.sum",
+      // "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
+      // "dram__bytes_write.sum"
+      // "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+
+      // "sm__ctas_launched.sum",  
+      // "dram__sectors_read.sum",
+      // "gpu__cycles_in_region",
+      // "dram__throughput.avg.pct_of_peak_sustained_elapsed", // Seems like it cannot be read with the dram__sectors_read.sum.
       // "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
       // "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
       // "l1tex__t_sector_hit_rate.pct"
   };
+#endif
 
   static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
   {
+    #ifdef USE_CUPTI
     if (instance)
       instance->bufferRequestedImpl(buffer, size, maxNumRecords);
+    #endif
   }
 
   static void CUPTIAPI bufferCompletedThunk(CUcontext ctx, uint32_t streamId,
                                             uint8_t *buffer, size_t size, size_t validSize)
   {
+    #ifdef USE_CUPTI
     if (instance)
       instance->bufferCompletedImpl(ctx, streamId, buffer, size, validSize);
+    #endif
   }
 
   void bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords);

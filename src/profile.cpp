@@ -2,6 +2,7 @@
 
 GmpProfiler *GmpProfiler::instance = nullptr;
 
+#ifdef USE_CUPTI
 GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr)
 {
     assert(sessionPtr != nullptr);
@@ -27,6 +28,7 @@ GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpP
 
 GmpResult SessionManager::endSession(GmpProfileType type)
 {
+    #ifdef USE_CUPTI
     GMP_LOG_DEBUG("Ending session");
     if (ActivityMap[type].empty())
     {
@@ -46,7 +48,12 @@ GmpResult SessionManager::endSession(GmpProfileType type)
     }
     GMP_LOG_WARNING("Session of type " + std::to_string(static_cast<int>(type)) + " is already inactive.");
     return GmpResult::WARNING;
+    #else
+    return GmpResult::SUCCESS;
+    #endif
 }
+
+#endif
 
 GmpProfiler::GmpProfiler()
 {
@@ -54,10 +61,13 @@ GmpProfiler::GmpProfiler()
 
 GmpProfiler::~GmpProfiler()
 {
+    #ifdef USE_CUPTI
     // CUPTI_CALL(cuptiActivityFlushAll(0));
     // CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
 
     cuptiProfilerHost->TearDown();
+    #endif
+
 }
 
 // GmpResult GmpProfiler::RangeProfile(char *name, std::function<void()> func)
@@ -69,8 +79,10 @@ GmpProfiler::~GmpProfiler()
 
 GmpResult GmpProfiler::pushRange(const char *rangeName)
 {
+    #ifdef USE_CUPTI
     if (rangeProfilerTargetPtr)
     {
+        cudaDeviceSynchronize();
         CUPTI_API_CALL(rangeProfilerTargetPtr->PushRange(rangeName));
         return GmpResult::SUCCESS;
     }
@@ -79,10 +91,14 @@ GmpResult GmpProfiler::pushRange(const char *rangeName)
         GMP_LOG_ERROR("Range profiler target is not initialized.");
         return GmpResult::ERROR;
     }
+    #else
+    return GmpResult::SUCCESS;
+    #endif
 }
 
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
+    #ifdef USE_CUPTI
     switch (type)
     {
     case GmpProfileType::CONCURRENT_KERNEL:
@@ -94,13 +110,16 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
         GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
         return GmpResult::ERROR;
     }
+    #else
+    return GmpResult::SUCCESS;
+    #endif
 }
 
 GmpResult GmpProfiler::popRange()
 {
+    #ifdef USE_CUPTI
     if (rangeProfilerTargetPtr)
     {
-        cudaDeviceSynchronize();
         CUPTI_API_CALL(rangeProfilerTargetPtr->PopRange());
         return GmpResult::SUCCESS;
     }
@@ -109,10 +128,14 @@ GmpResult GmpProfiler::popRange()
         GMP_LOG_ERROR("Range profiler target is not initialized.");
         return GmpResult::ERROR;
     }
+    #else
+    return GmpResult::SUCCESS;
+    #endif
 }
 
 GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 {
+    #ifdef USE_CUPTI
     switch (type)
     {
     case GmpProfileType::CONCURRENT_KERNEL:
@@ -130,10 +153,14 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
         return GmpResult::ERROR;
     }
     }
+    #else
+    return GmpResult::SUCCESS;
+    #endif
 }
 
 void GmpProfiler::printProfilerRanges()
 {
+    #ifdef USE_CUPTI
     if (cuptiProfilerHost)
     {
         // Evaluate the results
@@ -151,18 +178,22 @@ void GmpProfiler::printProfilerRanges()
     {
         GMP_LOG_ERROR("Range profiler host is not initialized.");
     }
+    #endif
 }
 
 void GmpProfiler::bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
 {
+    #ifdef USE_CUPTI
     *size = 16 * 1024;
     *buffer = (uint8_t *)malloc(*size);
     *maxNumRecords = 0;
+    #endif
 }
 
 void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
                                       uint8_t *buffer, size_t size, size_t validSize)
 {
+    #ifdef USE_CUPTI
     CUptiResult status;
     CUpti_Activity *record = nullptr;
     GMP_LOG_DEBUG("Buffer completion callback called");
@@ -205,4 +236,5 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
     }
     free(buffer);
     GMP_LOG_DEBUG("Buffer completion callback ended");
+    #endif
 }

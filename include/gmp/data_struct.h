@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <cupti_callbacks.h>
+#include <cupti_activity.h>
 struct ApiRuntimeRecord
 {
     std::string functionName;
