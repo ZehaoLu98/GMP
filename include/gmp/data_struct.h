@@ -4,27 +4,29 @@
 #include <cstdint>
 #include <driver_types.h>
 #include <string>
+#include <vector>
 #include <map>
 #include <cupti_callbacks.h>
 #include <cupti_activity.h>
 struct ApiRuntimeRecord
 {
-    std::string functionName;
-    std::map<CUpti_CallbackId, uint64_t> startTimestampMp;
+  std::string functionName;
+  std::map<CUpti_CallbackId, uint64_t> startTimestampMp;
 };
 
 // Stores the event group and event ID
-typedef struct cupti_eventData_st {
+typedef struct cupti_eventData_st
+{
   CUpti_EventGroup eventGroup;
   CUpti_EventID eventId;
 } cupti_eventData;
 
 // Stores event data and values collected by the callback
-typedef struct RuntimeApiTrace_st {
+typedef struct RuntimeApiTrace_st
+{
   cupti_eventData *eventData;
   uint64_t eventVal;
 } RuntimeApiTrace_t;
-
 
 enum class GmpResult
 {
@@ -37,5 +39,19 @@ enum class GmpProfileType
 {
   CONCURRENT_KERNEL = 0,
 };
+
+struct GmpKernelData
+{
+  std::string name;
+  int grid_size[3] = {};
+  int block_size[3] = {};
+};
+
+struct GmpRangeData
+{
+  std::string name;
+  std::vector<GmpKernelData> kernelDataInRange;
+};
+
 
 #endif // GMP_DATA_STRUCT_H

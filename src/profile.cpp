@@ -6,12 +6,11 @@ GmpProfiler *GmpProfiler::instance = nullptr;
 GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr)
 {
     assert(sessionPtr != nullptr);
-    CUpti_SubscriberHandle runtimeSubscriber;
     if (ActivityMap[type].empty() || !ActivityMap[type].back()->isActive())
     {
-        CUPTI_CALL(cuptiSubscribe(&runtimeSubscriber, (CUpti_CallbackFunc)getTimestampCallback, (void *)&sessionPtr->getRuntimeData()));
-        CUPTI_CALL(cuptiEnableDomain(1, runtimeSubscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
-        sessionPtr->setRuntimeHandle(runtimeSubscriber);
+        // CUPTI_CALL(cuptiSubscribe(&runtimeSubscriber, (CUpti_CallbackFunc)getTimestampCallback, (void *)&sessionPtr->getRuntimeData()));
+        // CUPTI_CALL(cuptiEnableDomain(1, runtimeSubscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
+        // sessionPtr->setRuntimeHandle(runtimeSubscriber);
 
         GMP_LOG_DEBUG("Session " + sessionPtr->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " added.");
 
@@ -28,7 +27,7 @@ GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpP
 
 GmpResult SessionManager::endSession(GmpProfileType type)
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     GMP_LOG_DEBUG("Ending session");
     if (ActivityMap[type].empty())
     {
@@ -38,8 +37,8 @@ GmpResult SessionManager::endSession(GmpProfileType type)
     auto &sessionPtr = ActivityMap[type].back();
     if (sessionPtr->isActive())
     {
-        CUpti_SubscriberHandle subscriber = sessionPtr->getRuntimeSubscriberHandle();
-        CUPTI_CALL(cuptiUnsubscribe(subscriber));
+        // CUpti_SubscriberHandle subscriber = sessionPtr->getRuntimeSubscriberHandle();
+        // CUPTI_CALL(cuptiUnsubscribe(subscriber));
 
         sessionPtr->report();
         sessionPtr->deactivate();
@@ -48,9 +47,9 @@ GmpResult SessionManager::endSession(GmpProfileType type)
     }
     GMP_LOG_WARNING("Session of type " + std::to_string(static_cast<int>(type)) + " is already inactive.");
     return GmpResult::WARNING;
-    #else
+#else
     return GmpResult::SUCCESS;
-    #endif
+#endif
 }
 
 #endif
@@ -61,25 +60,17 @@ GmpProfiler::GmpProfiler()
 
 GmpProfiler::~GmpProfiler()
 {
-    #ifdef USE_CUPTI
-    // CUPTI_CALL(cuptiActivityFlushAll(0));
-    // CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+#ifdef USE_CUPTI
+    CUPTI_CALL(cuptiActivityFlushAll(1));
+    CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
 
     cuptiProfilerHost->TearDown();
-    #endif
-
+#endif
 }
-
-// GmpResult GmpProfiler::RangeProfile(char *name, std::function<void()> func)
-// {
-//     CUPTI_API_CALL(rangeProfilerTargetPtr->PushRange(name));
-//     func();
-//     CUPTI_API_CALL(rangeProfilerTargetPtr->PopRange());
-// }
 
 GmpResult GmpProfiler::pushRange(const char *rangeName)
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     if (rangeProfilerTargetPtr)
     {
         cudaDeviceSynchronize();
@@ -91,33 +82,28 @@ GmpResult GmpProfiler::pushRange(const char *rangeName)
         GMP_LOG_ERROR("Range profiler target is not initialized.");
         return GmpResult::ERROR;
     }
-    #else
+#else
     return GmpResult::SUCCESS;
-    #endif
+#endif
 }
 
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
-    #ifdef USE_CUPTI
-    switch (type)
-    {
-    case GmpProfileType::CONCURRENT_KERNEL:
-        CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-        return sessionManager.startSession(
-            GmpProfileType::CONCURRENT_KERNEL,
-            std::make_unique<GmpConcurrentKernelSession>(name));
-    default:
-        GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
-        return GmpResult::ERROR;
-    }
-    #else
+#ifdef USE_CUPTI
+    // Remove all the activity records that is before the range.
+    cudaDeviceSynchronize();
+    cuptiActivityFlushAll(1);
+    GMP_LOG_DEBUG("Pushed range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
+    GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
     return GmpResult::SUCCESS;
-    #endif
+#else
+    return GmpResult::SUCCESS;
+#endif
 }
 
 GmpResult GmpProfiler::popRange()
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     if (rangeProfilerTargetPtr)
     {
         CUPTI_API_CALL(rangeProfilerTargetPtr->PopRange());
@@ -128,22 +114,24 @@ GmpResult GmpProfiler::popRange()
         GMP_LOG_ERROR("Range profiler target is not initialized.");
         return GmpResult::ERROR;
     }
-    #else
+#else
     return GmpResult::SUCCESS;
-    #endif
+#endif
 }
 
 GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     switch (type)
     {
     case GmpProfileType::CONCURRENT_KERNEL:
     {
-        CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-        GMP_LOG_DEBUG("Flusing all called");
-        CUPTI_CALL(cuptiActivityFlushAll(0));
-        GMP_LOG_DEBUG("Ending profiling for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + sessionManager.getSessionName(type));
+        cudaDeviceSynchronize();
+
+        // This ensures that all the records of kernels launched
+        // within the range are collected to the correct session.
+        CUPTI_CALL(cuptiActivityFlushAll(1));
+        GMP_LOG_DEBUG("Popped range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
         GMP_API_CALL(sessionManager.endSession(type));
         return GmpResult::SUCCESS;
     }
@@ -153,14 +141,14 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
         return GmpResult::ERROR;
     }
     }
-    #else
+#else
     return GmpResult::SUCCESS;
-    #endif
+#endif
 }
 
 void GmpProfiler::printProfilerRanges()
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     if (cuptiProfilerHost)
     {
         // Evaluate the results
@@ -172,28 +160,30 @@ void GmpProfiler::printProfilerRanges()
             CUPTI_API_CALL(cuptiProfilerHost->EvaluateCounterData(rangeIndex, metrics, counterDataImage));
         }
 
-        cuptiProfilerHost->PrintProfilerRanges();
+        // cuptiProfilerHost->PrintProfilerRanges();
+        auto allKernelData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
+        cuptiProfilerHost->PrintProfilerRangesWithNames(allKernelData);
     }
     else
     {
         GMP_LOG_ERROR("Range profiler host is not initialized.");
     }
-    #endif
+#endif
 }
 
 void GmpProfiler::bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     *size = 16 * 1024;
     *buffer = (uint8_t *)malloc(*size);
     *maxNumRecords = 0;
-    #endif
+#endif
 }
 
 void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
                                       uint8_t *buffer, size_t size, size_t validSize)
 {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     CUptiResult status;
     CUpti_Activity *record = nullptr;
     GMP_LOG_DEBUG("Buffer completion callback called");
@@ -205,14 +195,25 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
             if (record->kind == CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL)
             {
                 auto *kernel = (CUpti_ActivityKernel8 *)record;
-                printf("CUPTI: Kernel \"%s\" launched on stream %u, grid (%u,%u,%u), block (%u,%u,%u)\n",
-                       kernel->name, kernel->streamId,
-                       kernel->gridX, kernel->gridY, kernel->gridZ,
-                       kernel->blockX, kernel->blockY, kernel->blockZ);
                 auto result = sessionManager.accumulate<GmpConcurrentKernelSession>(
                     GmpProfileType::CONCURRENT_KERNEL,
-                    [](GmpConcurrentKernelSession *sessionPtr)
-                    { sessionPtr->num_calls++; });
+                    [&kernel](GmpConcurrentKernelSession *sessionPtr)
+                    {
+                        printf("CUPTI: Kernel \"%s\" launched on stream %u, grid (%u,%u,%u), block (%u,%u,%u)\n",
+                                kernel->name, kernel->streamId,
+                                kernel->gridX, kernel->gridY, kernel->gridZ,
+                                kernel->blockX, kernel->blockY, kernel->blockZ);
+                        sessionPtr->num_calls++;
+                        GmpKernelData data;
+                        data.name = kernel->name;
+                        data.grid_size[0] = kernel->gridX;
+                        data.grid_size[1] = kernel->gridY;
+                        data.grid_size[2] = kernel->gridZ;
+                        data.block_size[0] = kernel->blockX;
+                        data.block_size[1] = kernel->blockY;
+                        data.block_size[2] = kernel->blockZ;
+                        sessionPtr->pushKernelData(data);
+                    });
                 if (result != GmpResult::SUCCESS)
                 {
                     GMP_LOG_ERROR("Failed to accumulate concurrent kernel session.");
@@ -236,5 +237,5 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
     }
     free(buffer);
     GMP_LOG_DEBUG("Buffer completion callback ended");
-    #endif
+#endif
 }

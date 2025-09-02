@@ -21,6 +21,8 @@
 #include <cupti_range_profiler.h>
 #include <cupti.h>
 
+#include "gmp/data_struct.h"
+
 struct ProfilerRange
 {
     size_t rangeIndex;
@@ -58,6 +60,32 @@ public:
         size_t &numOfRanges);
 
     void PrintProfilerRanges();
+
+    void PrintProfilerRangesWithNames(const std::vector<GmpRangeData>& rangeDataVec)
+    {
+        size_t currProfilerKernelCounter = 0;
+        for(int rangeIndex = 0; rangeIndex < rangeDataVec.size(); ++rangeIndex) {
+            auto& rangeData = rangeDataVec[rangeIndex];
+            std::cout << "Range Name: " << rangeData.name << "\n";
+            std::cout << "======================================================================================\n";
+            for(auto& kernelData : rangeData.kernelDataInRange) {
+                std::cout << "Kernel: " << kernelData.name << 
+                "<<<{" << kernelData.grid_size[0] << ", " << kernelData.grid_size[1] << ", " << kernelData.grid_size[2] << "}, {" 
+                << kernelData.block_size[0] << ", " << kernelData.block_size[1] << ", " << kernelData.block_size[2] << "} >>>" << "\n";
+                const auto &profilerRange = m_profilerRanges[currProfilerKernelCounter];
+                std::cout << "-----------------------------------------------------------------------------------\n";
+                for (const auto &metric : profilerRange.metricValues)
+                {
+                    std::cout << std::fixed << std::setprecision(3);
+                    std::cout << std::setw(50) << std::left << metric.first;
+                    std::cout << std::setw(30) << std::right << metric.second << "\n";
+                }
+                std::cout << "-----------------------------------------------------------------------------------\n";
+
+                currProfilerKernelCounter++;
+            }
+        }
+    }
 
 private:
     CUptiResult Initialize(std::vector<uint8_t> &counterAvailibilityImage);

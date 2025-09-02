@@ -22,7 +22,7 @@
 #include "gmp/util.h"
 
 #define ENABLE_USER_RANGE false
-#define MAX_NUM_RANGES 200
+#define MAX_NUM_RANGES 1000
 #define MAX_NUM_NESTING_LEVEL 1
 #define MIN_NESTING_LEVEL 1
 
@@ -80,10 +80,21 @@ public:
     this->runtimeSubscriber = runtimeSubscriber;
   }
 
+  void pushKernelData(const GmpKernelData &data)
+  {
+    kernelData.push_back(data);
+  }
+  
+  std::vector<GmpKernelData> getKernelData() const
+  {
+    return kernelData;
+  }
+
 protected:
   std::string sessionName;      // Name of the profiling session
   ApiRuntimeRecord runtimeData; // Data structure to hold timing information
   CUpti_SubscriberHandle runtimeSubscriber;
+  std::vector<GmpKernelData> kernelData; // Names of kernels launched in this session
   bool is_active = true;
   CUcontext context = 0;
 };
@@ -97,7 +108,7 @@ public:
 
   void report() const override
   {
-    printf("Session %s captured %llu calls\n", sessionName.c_str(), num_calls);
+    printf("Session %s captured %lld calls\n", sessionName.c_str(), num_calls);
   }
   unsigned long long num_calls;
 
@@ -122,10 +133,6 @@ public:
     }
   }
 
-  // Attempt to add a session of a specific type.
-  // If the last session of that type is active, this function does nothing.
-  GmpResult startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr);
-
   template <typename DerivedSession>
   using AccumulateFunc = std::function<void(DerivedSession *)>;
 
@@ -133,27 +140,54 @@ public:
   template <typename DerivedSession>
   GmpResult accumulate(GmpProfileType type, AccumulateFunc<DerivedSession> callback)
   {
-    if (ActivityMap[type].empty())
+    if (!ActivityMap[type].empty())
     {
-      GMP_LOG_ERROR("No active session of type " + std::to_string(static_cast<int>(type)) + " found.");
-      return GmpResult::ERROR;
+      auto &sessionPtr = ActivityMap[type].back();
+      if (auto derivedSessionPtr = dynamic_cast<DerivedSession *>(sessionPtr.get()))
+      {
+        if(sessionPtr->isActive()){
+          callback(derivedSessionPtr);
+        }
+        return GmpResult::SUCCESS;
+      }
+      else{
+        return GmpResult::ERROR;
+      }
     }
-    auto &sessionPtr = ActivityMap[type].back();
-    if (auto derivedSessionPtr = dynamic_cast<DerivedSession *>(sessionPtr.get()))
-    {
-      assert(derivedSessionPtr->isActive());
-      callback(derivedSessionPtr);
-      return GmpResult::SUCCESS;
-    }
+    return GmpResult::SUCCESS;
   }
 
+  GmpResult reportAllSessions()
+  {
+    for (auto &pair : ActivityMap)
+    {
+      for (const auto &sessionPtr : pair.second)
+      {
+        sessionPtr->report();
+      }
+    }
+    return GmpResult::SUCCESS;
+  }
+
+  GmpResult startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr);
+
   GmpResult endSession(GmpProfileType type);
+
+  std::vector<GmpRangeData> getAllKernelDataOfType(GmpProfileType type)
+  {
+    std::vector<GmpRangeData> allKernelData;
+    for (const auto &sessionPtr : ActivityMap[type])
+    {
+      auto dataInRange = sessionPtr->getKernelData();
+      allKernelData.push_back({sessionPtr->getSessionName(), dataInRange});
+    }
+    return allKernelData;
+  }
 
 private:
   std::map<GmpProfileType, std::vector<std::unique_ptr<GmpProfileSession>>> ActivityMap;
 };
 #endif
-
 
 class GmpProfiler
 {
@@ -170,10 +204,10 @@ public:
     if (!instance)
     {
       instance = new GmpProfiler();
-      #ifdef USE_CUPTI
-      // CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-      // CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
-      //                                           &GmpProfiler::bufferCompletedThunk));
+#ifdef USE_CUPTI
+      CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+      CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
+                                                &GmpProfiler::bufferCompletedThunk));
       instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
 
       // Get the current ctx for the device
@@ -206,7 +240,7 @@ public:
       // Get chip name
       std::string chipName;
       CUPTI_CALL(RangeProfilerTarget::GetChipName(cuDevice, chipName));
- 
+
       // Get Counter availability image
       std::vector<uint8_t> counterAvailabilityImage;
       CUPTI_CALL(RangeProfilerTarget::GetCounterAvailabilityImage(cuContext, counterAvailabilityImage));
@@ -223,27 +257,27 @@ public:
       CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
 
       CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
-        ENABLE_USER_RANGE? CUPTI_UserRange : CUPTI_AutoRange,
-          ENABLE_USER_RANGE? CUPTI_UserReplay : CUPTI_KernelReplay,
+          ENABLE_USER_RANGE ? CUPTI_UserRange : CUPTI_AutoRange,
+          ENABLE_USER_RANGE ? CUPTI_UserReplay : CUPTI_KernelReplay,
           configImage,
           instance->counterDataImage));
-      #endif
+#endif
     }
     return instance;
   }
 
   void startRangeProfiling()
   {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     CUPTI_API_CALL(rangeProfilerTargetPtr->StartRangeProfiler());
-    #endif
+#endif
   }
 
   void stopRangeProfiling()
   {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     CUPTI_API_CALL(rangeProfilerTargetPtr->StopRangeProfiler());
-    #endif
+#endif
   }
 
   // GmpResult RangeProfile(char *name, std::function<void()> func);
@@ -265,17 +299,17 @@ public:
 
   bool isAllPassSubmitted()
   {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     return rangeProfilerTargetPtr->IsAllPassSubmitted();
-    #endif
+#endif
     return true;
   }
 
   void decodeCounterData()
   {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     CUPTI_API_CALL(rangeProfilerTargetPtr->DecodeCounterData());
-    #endif
+#endif
   }
 
 private:
@@ -287,56 +321,76 @@ private:
   SessionManager sessionManager;
   std::vector<uint8_t> counterDataImage;
   std::vector<const char *> metrics = {
-      // "dram__bytes_read.sum",
-      // "dram__bytes_write.sum",
-      // "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
-
-      // "sm__warps_active.avg.pct_of_peak_sustained_active",
-      // "sm__throughput.avg.pct_of_peak_sustained_elapsed",
-      // "smsp__warps_launched.sum",
-      // "smsp__inst_executed.avg",
-      // "smsp__inst_issued.sum",
+      // Group 1
       // "gpu__time_duration.sum",
-      "gpc__cycles_active.max",
-      "gpc__cycles_elapsed.max",
-      // "gpu__time_active.sum",
-      // "gpu__time_duration_measured_wallclock.sum",
-      // "gpu__cycles_active.sum",
-      // "gpu__cycles_elapsed.sum",
-      // "sm__cycles_active.sum",
-      // "smsp__cycles_active.sum",
-      // "smsp__inst_executed.sum",
-      // "dram__throughput.avg.pct_of_peak_sustained_elapsed",
-      // "dram__bytes.sum",
-      // "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
-      // "dram__bytes_write.sum"
-      // "gpu__dram_throughput.avg.pct_of_peak_sustained_elapsed",
+      // "gpu__time_duration.max",
+      // "gpc__cycles_elapsed.avg.per_second",
+      // "gpc__cycles_elapsed.max",
+      // "sm__cycles_active.max",
 
-      // "sm__ctas_launched.sum",  
-      // "dram__sectors_read.sum",
-      // "gpu__cycles_in_region",
-      // "dram__throughput.avg.pct_of_peak_sustained_elapsed", // Seems like it cannot be read with the dram__sectors_read.sum.
+      // // Group 2
+      // // Sub Group 1
+      // "smsp__inst_executed.sum",
+      // "smsp__sass_inst_executed_op_shared_ld.sum",
+      // "smsp__sass_inst_executed_op_shared_st.sum",
+      // "smsp__sass_inst_executed_op_global_ld.sum",
+      // "smsp__sass_inst_executed_op_global_st.sum",
+      // // Sub Group 2
+      // "sm__pipe_alu_cycles_active.max",
+      // "sm__pipe_fma_cycles_active.max",
+      // "sm__pipe_tensor_cycles_active.max",
+      // "sm__pipe_shared_cycles_active.max",
+      // // Sub Group 3
+      // "sm__sass_inst_executed_op_ldgsts_cache_access.sum",
+      // "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum",
+
+      // // Group 3
+      // // Sub Group 1
+      // "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum",
+      // // Sub Group 2
       // "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
+      // // Sub Group 3
+      // "l1tex__t_requests_pipe_lsu_mem_global_op_st.sum",
+      // // Sub Group 4
       // "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
-      // "l1tex__t_sector_hit_rate.pct"
+      // // Sub Group 5
+      // "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
+      // "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
+      // "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
+      // "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
+      // // Sub Group 6
+      // "lts__t_requests_srcunit_tex_op_read.sum",
+      // "lts__t_requests_srcunit_tex_op_write.sum",
+      // "dram__sectors_read.sum",
+      // "dram__sectors_write.sum",
+
+      // // Group 4
+      // // Sub Group 1
+      // "smsp__average_warp_latency_per_inst_issued.ratio",
+      // // Sub Group 2
+      // "smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio",
+      // "smsp__average_warps_issue_stalled_wait_per_issue_active.ratio",
+      // // Sub Group 3
+      "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio",
+      "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio",
   };
 #endif
 
   static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
   {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     if (instance)
       instance->bufferRequestedImpl(buffer, size, maxNumRecords);
-    #endif
+#endif
   }
 
   static void CUPTIAPI bufferCompletedThunk(CUcontext ctx, uint32_t streamId,
                                             uint8_t *buffer, size_t size, size_t validSize)
   {
-    #ifdef USE_CUPTI
+#ifdef USE_CUPTI
     if (instance)
       instance->bufferCompletedImpl(ctx, streamId, buffer, size, validSize);
-    #endif
+#endif
   }
 
   void bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords);
