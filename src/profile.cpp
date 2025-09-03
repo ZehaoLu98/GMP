@@ -199,10 +199,10 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
                     GmpProfileType::CONCURRENT_KERNEL,
                     [&kernel](GmpConcurrentKernelSession *sessionPtr)
                     {
-                        printf("CUPTI: Kernel \"%s\" launched on stream %u, grid (%u,%u,%u), block (%u,%u,%u)\n",
-                                kernel->name, kernel->streamId,
-                                kernel->gridX, kernel->gridY, kernel->gridZ,
-                                kernel->blockX, kernel->blockY, kernel->blockZ);
+                        // printf("CUPTI: Kernel \"%s\" launched on stream %u, grid (%u,%u,%u), block (%u,%u,%u)\n",
+                        //         kernel->name, kernel->streamId,
+                        //         kernel->gridX, kernel->gridY, kernel->gridZ,
+                        //         kernel->blockX, kernel->blockY, kernel->blockZ);
                         sessionPtr->num_calls++;
                         GmpKernelData data;
                         data.name = kernel->name;
@@ -239,3 +239,66 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
     GMP_LOG_DEBUG("Buffer completion callback ended");
 #endif
 }
+
+  void GmpProfiler::init()
+  {
+#ifdef USE_CUPTI
+      CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+      CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
+                                                &GmpProfiler::bufferCompletedThunk));
+      instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
+
+      // Get the current ctx for the device
+      CUdevice cuDevice;
+      DRIVER_API_CALL(cuDeviceGet(&cuDevice, 0));
+      int computeCapabilityMajor = 0, computeCapabilityMinor = 0;
+      DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice));
+      DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice));
+      printf("Compute Capability of Device: %d.%d\n", computeCapabilityMajor, computeCapabilityMinor);
+
+      if (computeCapabilityMajor < 7 || (computeCapabilityMajor == 7 && computeCapabilityMinor < 5))
+      {
+        std::cerr << "Range Profiling is supported only on devices with compute capability 7.5 and above" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+
+      RangeProfilerConfig config;
+      // default config values
+      config.maxNumOfRanges = MAX_NUM_RANGES;
+      config.minNestingLevel = MIN_NESTING_LEVEL;
+      config.numOfNestingLevel = MAX_NUM_NESTING_LEVEL;
+
+      // Should not create a context!!!!!!!!!
+      CUcontext cuContext;
+      // DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
+      DRIVER_API_CALL(cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
+      DRIVER_API_CALL(cuCtxSetCurrent(cuContext)); // matches what Eigen/Runtime use
+      instance->rangeProfilerTargetPtr = std::make_shared<RangeProfilerTarget>(cuContext, config);
+
+      // Get chip name
+      std::string chipName;
+      CUPTI_CALL(RangeProfilerTarget::GetChipName(cuDevice, chipName));
+
+      // Get Counter availability image
+      std::vector<uint8_t> counterAvailabilityImage;
+      CUPTI_CALL(RangeProfilerTarget::GetCounterAvailabilityImage(cuContext, counterAvailabilityImage));
+
+      // Create config image
+      std::vector<uint8_t> configImage;
+      instance->cuptiProfilerHost->SetUp(chipName, counterAvailabilityImage);
+      CUPTI_CALL(instance->cuptiProfilerHost->CreateConfigImage(instance->metrics, configImage));
+
+      // Enable Range profiler
+      CUPTI_CALL(instance->rangeProfilerTargetPtr->EnableRangeProfiler());
+
+      // Create CounterData Image
+      CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
+
+      CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
+          ENABLE_USER_RANGE ? CUPTI_UserRange : CUPTI_AutoRange,
+          ENABLE_USER_RANGE ? CUPTI_UserReplay : CUPTI_KernelReplay,
+          configImage,
+          instance->counterDataImage));
+#endif
+      isInitialized = true;
+  }

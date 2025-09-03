@@ -64,11 +64,15 @@ public:
     void PrintProfilerRangesWithNames(const std::vector<GmpRangeData>& rangeDataVec)
     {
         size_t currProfilerKernelCounter = 0;
-        for(int rangeIndex = 0; rangeIndex < rangeDataVec.size(); ++rangeIndex) {
-            auto& rangeData = rangeDataVec[rangeIndex];
+        std::cout<<"m_profilerRanges size: "<<m_profilerRanges.size()<<"\n";
+        for(int usrRangeIndex = 0; usrRangeIndex < rangeDataVec.size() && currProfilerKernelCounter < m_profilerRanges.size(); ++usrRangeIndex) {
+            auto& rangeData = rangeDataVec[usrRangeIndex];
             std::cout << "Range Name: " << rangeData.name << "\n";
             std::cout << "======================================================================================\n";
             for(auto& kernelData : rangeData.kernelDataInRange) {
+                if(currProfilerKernelCounter >= m_profilerRanges.size()) {
+                    break;
+                }   
                 std::cout << "Kernel: " << kernelData.name << 
                 "<<<{" << kernelData.grid_size[0] << ", " << kernelData.grid_size[1] << ", " << kernelData.grid_size[2] << "}, {" 
                 << kernelData.block_size[0] << ", " << kernelData.block_size[1] << ", " << kernelData.block_size[2] << "} >>>" << "\n";
