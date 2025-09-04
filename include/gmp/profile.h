@@ -227,15 +227,15 @@ public:
   // GmpResult RangeProfile(char *name, std::function<void()> func);
 
   // Range Profiling API
-  GmpResult pushRange(const char *rangeName);
+  GmpResult pushRangeProfilerRange(const char *rangeName);
 
-  // Activity API
+  // Activity + Range Profiling API
   GmpResult pushRange(const std::string &name, GmpProfileType type);
 
   // Range Profiling API
-  GmpResult popRange();
+  GmpResult popRangeProfilerRange();
 
-  // Activity API
+  // Activity + Range Profiling API
   GmpResult popRange(const std::string &name, GmpProfileType type);
 
   // Called after end of range profiling

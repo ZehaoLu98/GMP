@@ -69,7 +69,7 @@ GmpProfiler::~GmpProfiler()
 #endif
 }
 
-GmpResult GmpProfiler::pushRange(const char *rangeName)
+GmpResult GmpProfiler::pushRangeProfilerRange(const char *rangeName)
 {
 #ifdef USE_CUPTI
     if(!isEnabled){
@@ -102,13 +102,14 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
     cuptiActivityFlushAll(1);
     GMP_LOG_DEBUG("Pushed range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
     GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
+    pushRangeProfilerRange(name.c_str());
     return GmpResult::SUCCESS;
 #else
     return GmpResult::SUCCESS;
 #endif
 }
 
-GmpResult GmpProfiler::popRange()
+GmpResult GmpProfiler::popRangeProfilerRange()
 {
 #ifdef USE_CUPTI
     if(!isEnabled){
@@ -146,6 +147,7 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
         CUPTI_CALL(cuptiActivityFlushAll(1));
         GMP_LOG_DEBUG("Popped range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
         GMP_API_CALL(sessionManager.endSession(type));
+        popRangeProfilerRange();
         return GmpResult::SUCCESS;
     }
     default:
@@ -174,6 +176,7 @@ void GmpProfiler::printProfilerRanges()
         }
 
         // cuptiProfilerHost->PrintProfilerRanges();
+        GMP_API_CALL(checkActivityAndRangeResultMatch());
         auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
         
         // cuptiProfilerHost->PrintProfilerRangesWithNames(allKernelData);
