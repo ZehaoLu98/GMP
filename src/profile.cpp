@@ -349,3 +349,23 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
 #endif
       isInitialized = true;
   }
+
+  GmpResult GmpProfiler::checkActivityAndRangeResultMatch(){
+    if(!isEnabled){
+        return GmpResult::SUCCESS;
+    }
+    
+    auto allRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
+    size_t kernelInActivityRange = 0;
+    for(auto& rangeData: allRangeData){
+        kernelInActivityRange += rangeData.kernelDataInRange.size();
+    }
+
+    size_t kernelInRangeProfilerRange = 0;
+    cuptiProfilerHost->GetNumOfRanges(counterDataImage, kernelInRangeProfilerRange);
+    if(kernelInActivityRange != kernelInRangeProfilerRange){
+        GMP_LOG_ERROR("Kernel activity range and range profiler range do not match.");
+        return GmpResult::ERROR;
+    }
+    return GmpResult::SUCCESS;
+  }

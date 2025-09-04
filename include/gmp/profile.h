@@ -358,5 +358,7 @@ private:
 
   void bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
                            uint8_t *buffer, size_t size, size_t validSize);
+
+  GmpResult checkActivityAndRangeResultMatch();
 };
 #endif // GMP_PROFILE_H
