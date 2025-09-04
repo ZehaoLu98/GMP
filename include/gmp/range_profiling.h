@@ -12,6 +12,7 @@
 #include <vector>
 #include <unordered_map>
 #include <memory>
+#include <cassert>
 
 // CUPTI headers
 #include "helper_cupti.h"
@@ -89,6 +90,21 @@ public:
                 currProfilerKernelCounter++;
             }
         }
+    }
+
+    std::unordered_map<std::string, double> getMetrics(size_t startIndex, size_t size){
+        assert(startIndex < m_profilerRanges.size() && (startIndex + size) <= m_profilerRanges.size());
+        if(size == 1){
+            assert(startIndex<m_profilerRanges.size());
+            return m_profilerRanges[startIndex].metricValues;
+        }
+        std::unordered_map<std::string, double> combinedMetrics;
+        for(size_t i = startIndex; i < startIndex + size && i < m_profilerRanges.size(); ++i){
+            for(const auto& metric : m_profilerRanges[i].metricValues){
+                combinedMetrics[metric.first] += metric.second;
+            }
+        }
+        return combinedMetrics;
     }
 
 private:

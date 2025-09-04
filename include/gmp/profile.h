@@ -241,6 +241,8 @@ public:
   // Called after end of range profiling
   void printProfilerRanges();
 
+  void produceOutput();
+
   bool isAllPassSubmitted()
   {
 #ifdef USE_CUPTI

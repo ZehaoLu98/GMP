@@ -161,14 +161,45 @@ void GmpProfiler::printProfilerRanges()
         }
 
         // cuptiProfilerHost->PrintProfilerRanges();
-        auto allKernelData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
-        cuptiProfilerHost->PrintProfilerRangesWithNames(allKernelData);
+        auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
+        
+        // cuptiProfilerHost->PrintProfilerRangesWithNames(allKernelData);
+
+        produceOutput();
     }
     else
     {
         GMP_LOG_ERROR("Range profiler host is not initialized.");
     }
 #endif
+}
+
+void GmpProfiler::produceOutput()
+{
+    std::string path = "./output/result.csv";
+    std::ofstream outputFile(path, std::ios::app);
+    if (!outputFile.is_open())
+    {
+        GMP_LOG_ERROR("Failed to open output file: " + path);
+        return;
+    }
+
+    auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
+
+    size_t rangeProfileOffset = 0;
+    for (int activityRangeIdx = 0; activityRangeIdx < activityAllRangeData.size(); activityRangeIdx++)
+    {
+        const auto &activityRange = activityAllRangeData[activityRangeIdx];
+        auto kernelNum = activityRange.kernelDataInRange.size();
+        auto accumulatedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum);
+        outputFile.precision(2);
+        for (auto metricsPair : accumulatedMetrics)
+        {
+            outputFile << std::fixed << activityRange.name << "," << metricsPair.first << "," << metricsPair.second << "\n";
+        }
+        rangeProfileOffset += kernelNum;
+    }
+    outputFile.close();
 }
 
 void GmpProfiler::bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
