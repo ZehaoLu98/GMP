@@ -56,6 +56,7 @@ GmpResult SessionManager::endSession(GmpProfileType type)
 
 GmpProfiler::GmpProfiler()
 {
+    isEnabled = true;
 }
 
 GmpProfiler::~GmpProfiler()
@@ -71,6 +72,9 @@ GmpProfiler::~GmpProfiler()
 GmpResult GmpProfiler::pushRange(const char *rangeName)
 {
 #ifdef USE_CUPTI
+    if(!isEnabled){
+        return GmpResult::SUCCESS;
+    }
     if (rangeProfilerTargetPtr)
     {
         cudaDeviceSynchronize();
@@ -90,6 +94,9 @@ GmpResult GmpProfiler::pushRange(const char *rangeName)
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
 #ifdef USE_CUPTI
+    if(!isEnabled){
+        return GmpResult::SUCCESS;
+    }
     // Remove all the activity records that is before the range.
     cudaDeviceSynchronize();
     cuptiActivityFlushAll(1);
@@ -104,6 +111,9 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 GmpResult GmpProfiler::popRange()
 {
 #ifdef USE_CUPTI
+    if(!isEnabled){
+        return GmpResult::SUCCESS;
+    }
     if (rangeProfilerTargetPtr)
     {
         CUPTI_API_CALL(rangeProfilerTargetPtr->PopRange());
@@ -122,6 +132,9 @@ GmpResult GmpProfiler::popRange()
 GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 {
 #ifdef USE_CUPTI
+    if(!isEnabled){
+        return GmpResult::SUCCESS;
+    }
     switch (type)
     {
     case GmpProfileType::CONCURRENT_KERNEL:

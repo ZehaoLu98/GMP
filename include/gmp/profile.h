@@ -263,9 +263,18 @@ public:
     metrics.push_back(metric);
   }
 
+  void enable(){
+    isEnabled = true;
+  }
+
+  void disable(){
+    isEnabled = false;
+  }
+
 private:
   static GmpProfiler *instance;
   bool isInitialized = false;
+  bool isEnabled = false;
 
 #ifdef USE_CUPTI
   RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
