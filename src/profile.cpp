@@ -684,6 +684,15 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
       cuInit(0);
 
       // Get the current ctx for the device
+      // Check if CUDA is already initialized
+      CUresult init_result = cuDriverGetVersion(nullptr);
+      if (init_result != CUDA_SUCCESS) {
+          printf("Initializing CUDA driver...\n");
+          cuInit(0);
+      } else {
+          printf("CUDA driver already initialized\n");
+      }
+      
       CUdevice cuDevice;
       DRIVER_API_CALL(cuDeviceGet(&cuDevice, 0));
       int computeCapabilityMajor = 0, computeCapabilityMinor = 0;

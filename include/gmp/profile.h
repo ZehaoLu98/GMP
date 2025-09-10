@@ -237,6 +237,9 @@ public:
 
   ~GmpProfiler();
 
+  // This function has to be called before any kernel launches, otherwise the profiler will catch nothing.
+  // This is because this function will initialize a cuda context. If another context is created by luanching a kernel, 
+  // the profiler will not be able to catch the kernel launches in that context.
   void init();
 
   static GmpProfiler *getInstance()
