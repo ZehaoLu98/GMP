@@ -101,8 +101,22 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
     cudaDeviceSynchronize();
     cuptiActivityFlushAll(1);
     GMP_LOG_DEBUG("Pushed range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
-    GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
-    pushRangeProfilerRange(name.c_str());
+    
+    switch (type)
+    {
+        case GmpProfileType::CONCURRENT_KERNEL:
+            GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
+            pushRangeProfilerRange(name.c_str());
+            
+            break;
+        case GmpProfileType::MEMORY:
+            GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpMemSession>(name)));
+            break;
+        default:
+            GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
+            return GmpResult::ERROR;
+    }
+    
     return GmpResult::SUCCESS;
 #else
     return GmpResult::SUCCESS;
@@ -150,6 +164,17 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
         popRangeProfilerRange();
         return GmpResult::SUCCESS;
     }
+    case GmpProfileType::MEMORY:
+    {
+        cudaDeviceSynchronize();
+
+        // This ensures that all the memory activity records 
+        // within the range are collected to the correct session.
+        CUPTI_CALL(cuptiActivityFlushAll(1));
+        GMP_LOG_DEBUG("Popped memory range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
+        GMP_API_CALL(sessionManager.endSession(type));
+        return GmpResult::SUCCESS;
+    }
     default:
     {
         GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
@@ -187,6 +212,146 @@ void GmpProfiler::printProfilerRanges()
     {
         GMP_LOG_ERROR("Range profiler host is not initialized.");
     }
+#endif
+}
+
+void GmpProfiler::printMemoryActivity()
+{
+#ifdef USE_CUPTI
+    if(!isEnabled){
+        printf("GMP Profiler is disabled.\n");
+        return;
+    }
+
+    printf("\n=== Memory Activity Report ===\n");
+    
+    // Get memory data from MEMORY type sessions
+    auto allMemRangeData = sessionManager.getAllMemDataOfType(GmpProfileType::MEMORY);
+    
+    if (allMemRangeData.empty())
+    {
+        printf("No memory activity ranges found.\n");
+        return;
+    }
+    
+    printf("Total memory activity ranges: %zu\n\n", allMemRangeData.size());
+    
+    for (size_t rangeIdx = 0; rangeIdx < allMemRangeData.size(); rangeIdx++)
+    {
+        const auto& memRange = allMemRangeData[rangeIdx];
+        printf("Range %zu: %s\n", rangeIdx + 1, memRange.name.c_str());
+        printf("  Memory operations: %zu\n", memRange.memDataInRange.size());
+        
+        if (memRange.memDataInRange.empty())
+        {
+            printf("  No memory operations recorded.\n\n");
+            continue;
+        }
+        
+        // Categorize memory operations
+        uint64_t totalBytesAllocated = 0;
+        uint64_t totalBytesFreed = 0;
+        uint64_t totalBytesTransferred = 0;
+        size_t allocCount = 0;
+        size_t freeCount = 0;
+        size_t transferCount = 0;
+        
+        for (const auto& memData : memRange.memDataInRange)
+        {
+            switch (memData.memoryOperationType)
+            {
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
+                    totalBytesAllocated += memData.bytes;
+                    allocCount++;
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
+                    totalBytesFreed += memData.bytes;
+                    freeCount++;
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        // Print summary statistics
+        printf("  Summary:\n");
+        printf("    Allocations: %zu operations, %llu bytes (%.2f MB)\n", 
+               allocCount, totalBytesAllocated, totalBytesAllocated / 1024.0 / 1024.0);
+        printf("    Deallocations: %zu operations, %llu bytes (%.2f MB)\n", 
+               freeCount, totalBytesFreed, totalBytesFreed / 1024.0 / 1024.0);
+        
+        // Print detailed memory operations
+        printf("  Detailed operations:\n");
+        for (size_t i = 0; i < memRange.memDataInRange.size(); i++)
+        {
+            const auto& memData = memRange.memDataInRange[i];
+            
+            const char* opType = "";
+            switch (memData.memoryOperationType)
+            {
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
+                    opType = "ALLOC";
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
+                    opType = "FREE";
+                    break;
+                default:
+                    opType = "UNKNOWN";
+                    break;
+            }
+            
+            const char* memKind = "";
+            switch (memData.memoryKind)
+            {
+                case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
+                    memKind = "DEVICE";
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
+                    memKind = "MANAGED";
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
+                    memKind = "PINNED";
+                    break;
+                default:
+                    memKind = "UNKNOWN";
+                    break;
+            }
+            
+            printf("    [%zu] %s %s: %llu bytes at 0x%016llx", 
+                   i + 1, opType, memKind, memData.bytes, memData.address);
+            
+            if (memData.name && strlen(memData.name) > 0)
+            {
+                printf(" (%s)", memData.name);
+            }
+            
+            if (memData.isAsync)
+            {
+                printf(" [ASYNC, Stream %u]", memData.streamId);
+            }
+            
+            printf(" [Device %u, Context %u, Correlation %u]\n", 
+                   memData.deviceId, memData.contextId, memData.correlationId);
+        }
+        
+        printf("\n");
+    }
+    
+    printf("=== End Memory Activity Report ===\n\n");
+#else
+    printf("CUPTI support is not enabled. Memory activity profiling is not available.\n");
+#endif
+}
+
+std::vector<GmpMemRangeData> GmpProfiler::getMemoryActivity()
+{
+#ifdef USE_CUPTI
+    if(!isEnabled){
+        return std::vector<GmpMemRangeData>();
+    }
+    return sessionManager.getAllMemDataOfType(GmpProfileType::MEMORY);
+#else
+    return std::vector<GmpMemRangeData>();
 #endif
 }
 
@@ -266,6 +431,38 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
                     GMP_LOG_ERROR("Failed to accumulate concurrent kernel session.");
                 }
             }
+            else if (record->kind == CUPTI_ACTIVITY_KIND_MEMORY2)
+            {
+                auto *memRecord = (CUpti_ActivityMemory4 *)record;
+                
+                auto result = sessionManager.accumulate<GmpMemSession>(
+                    GmpProfileType::MEMORY,
+                    [&memRecord](GmpMemSession *sessionPtr)
+                    {
+                        // printf("CUPTI: Kernel \"%s\" launched on stream %u, grid (%u,%u,%u), block (%u,%u,%u)\n",
+                        //         kernel->name, kernel->streamId,
+                        //         kernel->gridX, kernel->gridY, kernel->gridZ,
+                        //         kernel->blockX, kernel->blockY, kernel->blockZ);
+                        sessionPtr->num_calls++;
+                        GmpMemData data;
+                        data.name = memRecord->name;
+                        data.source = memRecord->source;
+                        data.memoryOperationType = memRecord->memoryOperationType;
+                        data.memoryKind = memRecord->memoryKind;
+                        data.correlationId = memRecord->correlationId;
+                        data.address = memRecord->address;
+                        data.bytes = memRecord->bytes;
+                        data.timestamp = memRecord->timestamp;
+                        data.PC = memRecord->PC;
+                        data.processId = memRecord->processId;
+                        data.deviceId = memRecord->deviceId;
+                        data.contextId = memRecord->contextId;
+                        data.streamId = memRecord->streamId;
+                        data.isAsync = memRecord->isAsync;
+
+                        sessionPtr->pushMemData(data);
+                    });
+            }
         }
         else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED)
         {
@@ -291,9 +488,11 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
   {
 #ifdef USE_CUPTI
       CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+      CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMORY2));
       CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
                                                 &GmpProfiler::bufferCompletedThunk));
       instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
+      cuInit(0);
 
       // Get the current ctx for the device
       CUdevice cuDevice;

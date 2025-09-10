@@ -84,10 +84,20 @@ public:
   {
     kernelData.push_back(data);
   }
+
+  void pushMemData(const GmpMemData &data)
+  {
+    memData.push_back(data);
+  }
   
   std::vector<GmpKernelData> getKernelData() const
   {
     return kernelData;
+  }
+
+  std::vector<GmpMemData> getMemData() const
+  {
+    return memData;
   }
 
 protected:
@@ -95,6 +105,7 @@ protected:
   ApiRuntimeRecord runtimeData; // Data structure to hold timing information
   CUpti_SubscriberHandle runtimeSubscriber;
   std::vector<GmpKernelData> kernelData; // Names of kernels launched in this session
+  std::vector<GmpMemData> memData; // Memory operations in this session
   bool is_active = true;
   CUcontext context = 0;
 };
@@ -114,6 +125,22 @@ public:
 
 private:
 };
+
+class GmpMemSession : public GmpProfileSession
+{
+public:
+  GmpMemSession(const std::string &sessionName)
+      : GmpProfileSession(sessionName) {}
+
+  void report() const override
+  {
+    // GMP_LOG_DEBUG("Session " + sessionName.c_str() + " captured " + std::to_string(num_calls) + " calls");
+  }
+  unsigned long long num_calls;
+
+private:
+};
+
 
 class SessionManager
 {
@@ -184,6 +211,17 @@ public:
     return allKernelData;
   }
 
+  std::vector<GmpMemRangeData> getAllMemDataOfType(GmpProfileType type)
+  {
+    std::vector<GmpMemRangeData> allMemData;
+    for (const auto &sessionPtr : ActivityMap[type])
+    {
+      auto dataInRange = sessionPtr->getMemData();
+      allMemData.push_back({sessionPtr->getSessionName(), dataInRange});
+    }
+    return allMemData;
+  }
+
 private:
   std::map<GmpProfileType, std::vector<std::unique_ptr<GmpProfileSession>>> ActivityMap;
 };
@@ -240,6 +278,12 @@ public:
 
   // Called after end of range profiling
   void printProfilerRanges();
+
+  // Print memory activity for all ranges
+  void printMemoryActivity();
+
+  // Get all memory activity data  
+  std::vector<GmpMemRangeData> getMemoryActivity();
 
   void produceOutput();
 
