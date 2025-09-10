@@ -277,7 +277,7 @@ public:
   GmpResult popRange(const std::string &name, GmpProfileType type);
 
   // Called after end of range profiling
-  void printProfilerRanges();
+  void printProfilerRanges(GmpOutputKernelReduction option);
 
   // Print memory activity for all ranges
   void printMemoryActivity();
@@ -285,7 +285,7 @@ public:
   // Get all memory activity data  
   std::vector<GmpMemRangeData> getMemoryActivity();
 
-  void produceOutput();
+  void produceOutput(GmpOutputKernelReduction option);
 
   bool isAllPassSubmitted()
   {
@@ -368,6 +368,9 @@ private:
       // "lts__t_requests_srcunit_tex_op_write.sum",
       // "dram__sectors_read.sum",
       // "dram__sectors_write.sum",
+      // // Sub Group 7
+      // "lts__t_requests_srcunit_l1_op_read.sum",
+      // "lts__t_requests_srcunit_l1_op_write.sum",
 
       // // Group 4
       // // Sub Group 1

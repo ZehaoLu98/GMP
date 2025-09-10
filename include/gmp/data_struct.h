@@ -35,6 +35,13 @@ enum class GmpResult
   ERROR = 2,
 };
 
+enum class GmpOutputKernelReduction
+{
+  SUM = 0,
+  MAX = 1,
+  MEAN = 2,
+};
+
 enum class GmpProfileType
 {
   CONCURRENT_KERNEL = 0,

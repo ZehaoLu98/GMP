@@ -185,7 +185,7 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 #endif
 }
 
-void GmpProfiler::printProfilerRanges()
+void GmpProfiler::printProfilerRanges(GmpOutputKernelReduction option)
 {
 #ifdef USE_CUPTI
     if (cuptiProfilerHost)
@@ -203,8 +203,7 @@ void GmpProfiler::printProfilerRanges()
         GMP_API_CALL(checkActivityAndRangeResultMatch());
         auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
         cuptiProfilerHost->PrintProfilerRangesWithNames(activityAllRangeData);
-
-        produceOutput();
+        produceOutput(option);
     }
     else
     {
@@ -353,9 +352,185 @@ std::vector<GmpMemRangeData> GmpProfiler::getMemoryActivity()
 #endif
 }
 
-void GmpProfiler::produceOutput()
+void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
+{
+#ifdef USE_CUPTI
+    if(!isEnabled){
+        printf("GMP Profiler is disabled.\n");
+        return;
+    }
+
+    printf("\n=== Memory Activity Report ===\n");
+    
+    // Get memory data from MEMORY type sessions
+    auto allMemRangeData = sessionManager.getAllMemDataOfType(GmpProfileType::MEMORY);
+    
+    if (allMemRangeData.empty())
+    {
+        printf("No memory activity ranges found.\n");
+        return;
+    }
+    
+    printf("Total memory activity ranges: %zu\n\n", allMemRangeData.size());
+    
+    for (size_t rangeIdx = 0; rangeIdx < allMemRangeData.size(); rangeIdx++)
+    {
+        const auto& memRange = allMemRangeData[rangeIdx];
+        printf("Range %zu: %s\n", rangeIdx + 1, memRange.name.c_str());
+        printf("  Memory operations: %zu\n", memRange.memDataInRange.size());
+        
+        if (memRange.memDataInRange.empty())
+        {
+            printf("  No memory operations recorded.\n\n");
+            continue;
+        }
+        
+        // Categorize memory operations
+        uint64_t totalBytesAllocated = 0;
+        uint64_t totalBytesFreed = 0;
+        uint64_t totalBytesTransferred = 0;
+        size_t allocCount = 0;
+        size_t freeCount = 0;
+        size_t transferCount = 0;
+        
+        for (const auto& memData : memRange.memDataInRange)
+        {
+            switch (memData.memoryOperationType)
+            {
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
+                    totalBytesAllocated += memData.bytes;
+                    allocCount++;
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
+                    totalBytesFreed += memData.bytes;
+                    freeCount++;
+                    break;
+                default:
+                    break;
+            }
+        }
+        
+        // Print summary statistics
+        printf("  Summary:\n");
+        printf("    Allocations: %zu operations, %llu bytes (%.2f MB)\n", 
+               allocCount, totalBytesAllocated, totalBytesAllocated / 1024.0 / 1024.0);
+        printf("    Deallocations: %zu operations, %llu bytes (%.2f MB)\n", 
+               freeCount, totalBytesFreed, totalBytesFreed / 1024.0 / 1024.0);
+        
+        // Print detailed memory operations
+        printf("  Detailed operations:\n");
+        for (size_t i = 0; i < memRange.memDataInRange.size(); i++)
+        {
+            const auto& memData = memRange.memDataInRange[i];
+            
+            const char* opType = "";
+            switch (memData.memoryOperationType)
+            {
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
+                    opType = "ALLOC";
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
+                    opType = "FREE";
+                    break;
+                default:
+                    opType = "UNKNOWN";
+                    break;
+            }
+            
+            const char* memKind = "";
+            switch (memData.memoryKind)
+            {
+                case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
+                    memKind = "DEVICE";
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
+                    memKind = "MANAGED";
+                    break;
+                case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
+                    memKind = "PINNED";
+                    break;
+                default:
+                    memKind = "UNKNOWN";
+                    break;
+            }
+            
+            printf("    [%zu] %s %s: %llu bytes at 0x%016llx", 
+                   i + 1, opType, memKind, memData.bytes, memData.address);
+            
+            if (memData.name && strlen(memData.name) > 0)
+            {
+                printf(" (%s)", memData.name);
+            }
+            
+            if (memData.isAsync)
+            {
+                printf(" [ASYNC, Stream %u]", memData.streamId);
+            }
+            
+            printf(" [Device %u, Context %u, Correlation %u]\n", 
+                   memData.deviceId, memData.contextId, memData.correlationId);
+        }
+        
+        printf("\n");
+    }
+    
+    printf("=== End Memory Activity Report ===\n\n");
+#else
+    printf("CUPTI support is not enabled. Memory activity profiling is not available.\n");
+#endif
+}
+
+std::vector<GmpMemRangeData> GmpProfiler::getMemoryActivity()
+{
+#ifdef USE_CUPTI
+    if(!isEnabled){
+        return std::vector<GmpMemRangeData>();
+    }
+    return sessionManager.getAllMemDataOfType(GmpProfileType::MEMORY);
+#else
+    return std::vector<GmpMemRangeData>();
+#endif
+}
+
+void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
 {
     std::string path = "./output/result.csv";
+
+    auto sumFunc = [](const std::vector<ProfilerRange>& ranges, size_t startIndex, size_t size){
+        std::unordered_map<std::string, double> combinedMetrics;
+        for(size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i){
+            for(const auto& metric : ranges[i].metricValues){
+                combinedMetrics[metric.first] += metric.second;
+            }
+        }
+        return combinedMetrics;
+    };
+
+    auto maxFunc = [](const std::vector<ProfilerRange>& ranges, size_t startIndex, size_t size){
+        std::unordered_map<std::string, double> maxMetrics;
+        for(size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i){
+            for(const auto& metric : ranges[i].metricValues){
+                if(maxMetrics.find(metric.first) == maxMetrics.end() || metric.second > maxMetrics[metric.first]){
+                    maxMetrics[metric.first] = metric.second;
+                }
+            }
+        }
+        return maxMetrics;
+    };
+
+    auto meanFunc = [](const std::vector<ProfilerRange>& ranges, size_t startIndex, size_t size){
+        std::unordered_map<std::string, double> meanMetrics;
+        for(size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i){
+            for(const auto& metric : ranges[i].metricValues){
+                meanMetrics[metric.first] += metric.second;
+            }
+        }
+        for(auto& metric : meanMetrics){
+            metric.second /= size;
+        }
+        return meanMetrics;
+    };
+
     std::ofstream outputFile(path, std::ios::app);
     if (!outputFile.is_open())
     {
@@ -370,9 +545,25 @@ void GmpProfiler::produceOutput()
     {
         const auto &activityRange = activityAllRangeData[activityRangeIdx];
         auto kernelNum = activityRange.kernelDataInRange.size();
-        auto accumulatedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum);
         outputFile.precision(2);
-        for (auto metricsPair : accumulatedMetrics)
+
+        std::unordered_map<std::string, double> reducedMetrics;
+        switch (option)
+        {
+        case GmpOutputKernelReduction::SUM:
+            reducedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum, sumFunc);
+            break;
+        case GmpOutputKernelReduction::MAX:
+            reducedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum, maxFunc);
+            break;
+        case GmpOutputKernelReduction::MEAN:
+            reducedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum, meanFunc);
+            break;
+        default:
+            break;
+        }
+
+        for (auto metricsPair : reducedMetrics)
         {
             outputFile << std::fixed << activityRange.name << "," << metricsPair.first << "," << metricsPair.second << "\n";
         }

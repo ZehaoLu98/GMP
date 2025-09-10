@@ -12,7 +12,7 @@
 // 2: WARNING
 // 3: SYS INFO
 // 4: DEBUG INFO
-#define GMP_LOG_LEVEL 4
+#define GMP_LOG_LEVEL 1
 
 #define GMP_LOG(fmt) \
   ([&]() -> std::ostream& { \
