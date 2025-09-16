@@ -107,7 +107,6 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
         case GmpProfileType::CONCURRENT_KERNEL:
             GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
             pushRangeProfilerRange(name.c_str());
-            
             break;
         case GmpProfileType::MEMORY:
             GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpMemSession>(name)));
@@ -203,8 +202,7 @@ void GmpProfiler::printProfilerRanges()
         // cuptiProfilerHost->PrintProfilerRanges();
         GMP_API_CALL(checkActivityAndRangeResultMatch());
         auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
-        
-        // cuptiProfilerHost->PrintProfilerRangesWithNames(allKernelData);
+        cuptiProfilerHost->PrintProfilerRangesWithNames(activityAllRangeData);
 
         produceOutput();
     }
