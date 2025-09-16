@@ -31,4 +31,17 @@
 #define GMP_LOG_DEBUG(msg) \
   do { if (GMP_LOG_LEVEL >= 4) GMP_LOG("DEBUG") << msg << std::endl; } while (0)
 
+#define GMP_TIMED(name, stmt)                                                \
+    do {                                                                   \
+        auto __gmp_start = std::chrono::high_resolution_clock::now();      \
+        stmt;                                                              \
+        auto __gmp_end = std::chrono::high_resolution_clock::now();        \
+        auto __gmp_duration =                                              \
+            std::chrono::duration_cast<std::chrono::microseconds>(         \
+                __gmp_end - __gmp_start                                    \
+            ).count();                                                     \
+        std::cout << "[TIMED] " << name << " took "                       \
+                  << __gmp_duration << " µs" << std::endl;                 \
+    } while (0)
+
 #endif  // GMP_LLMC_UTILS_LOG_H
