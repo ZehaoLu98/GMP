@@ -72,7 +72,8 @@ GmpProfiler::~GmpProfiler()
 GmpResult GmpProfiler::pushRangeProfilerRange(const char *rangeName)
 {
 #ifdef USE_CUPTI
-    if(!isEnabled){
+    if (!isEnabled)
+    {
         return GmpResult::SUCCESS;
     }
     if (rangeProfilerTargetPtr)
@@ -94,28 +95,29 @@ GmpResult GmpProfiler::pushRangeProfilerRange(const char *rangeName)
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
 #ifdef USE_CUPTI
-    if(!isEnabled){
+    if (!isEnabled)
+    {
         return GmpResult::SUCCESS;
     }
     // Remove all the activity records that is before the range.
     cudaDeviceSynchronize();
     cuptiActivityFlushAll(1);
     GMP_LOG_DEBUG("Pushed range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
-    
+
     switch (type)
     {
-        case GmpProfileType::CONCURRENT_KERNEL:
-            GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
-            pushRangeProfilerRange(name.c_str());
-            break;
-        case GmpProfileType::MEMORY:
-            GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpMemSession>(name)));
-            break;
-        default:
-            GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
-            return GmpResult::ERROR;
+    case GmpProfileType::CONCURRENT_KERNEL:
+        GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpConcurrentKernelSession>(name)));
+        pushRangeProfilerRange(name.c_str());
+        break;
+    case GmpProfileType::MEMORY:
+        GMP_API_CALL(getInstance()->sessionManager.startSession(type, std::make_unique<GmpMemSession>(name)));
+        break;
+    default:
+        GMP_LOG_ERROR("Unsupported profile type: " + std::to_string(static_cast<int>(type)));
+        return GmpResult::ERROR;
     }
-    
+
     return GmpResult::SUCCESS;
 #else
     return GmpResult::SUCCESS;
@@ -125,7 +127,8 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 GmpResult GmpProfiler::popRangeProfilerRange()
 {
 #ifdef USE_CUPTI
-    if(!isEnabled){
+    if (!isEnabled)
+    {
         return GmpResult::SUCCESS;
     }
     if (rangeProfilerTargetPtr)
@@ -146,7 +149,8 @@ GmpResult GmpProfiler::popRangeProfilerRange()
 GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 {
 #ifdef USE_CUPTI
-    if(!isEnabled){
+    if (!isEnabled)
+    {
         return GmpResult::SUCCESS;
     }
     switch (type)
@@ -167,7 +171,7 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
     {
         cudaDeviceSynchronize();
 
-        // This ensures that all the memory activity records 
+        // This ensures that all the memory activity records
         // within the range are collected to the correct session.
         CUPTI_CALL(cuptiActivityFlushAll(1));
         GMP_LOG_DEBUG("Popped memory range for type: " + std::to_string(static_cast<int>(type)) + " with session name: " + name);
@@ -215,36 +219,37 @@ void GmpProfiler::printProfilerRanges(GmpOutputKernelReduction option)
 void GmpProfiler::printMemoryActivity()
 {
 #ifdef USE_CUPTI
-    if(!isEnabled){
+    if (!isEnabled)
+    {
         printf("GMP Profiler is disabled.\n");
         return;
     }
 
     printf("\n=== Memory Activity Report ===\n");
-    
+
     // Get memory data from MEMORY type sessions
     auto allMemRangeData = sessionManager.getAllMemDataOfType(GmpProfileType::MEMORY);
-    
+
     if (allMemRangeData.empty())
     {
         printf("No memory activity ranges found.\n");
         return;
     }
-    
+
     printf("Total memory activity ranges: %zu\n\n", allMemRangeData.size());
-    
+
     for (size_t rangeIdx = 0; rangeIdx < allMemRangeData.size(); rangeIdx++)
     {
-        const auto& memRange = allMemRangeData[rangeIdx];
+        const auto &memRange = allMemRangeData[rangeIdx];
         printf("Range %zu: %s\n", rangeIdx + 1, memRange.name.c_str());
         printf("  Memory operations: %zu\n", memRange.memDataInRange.size());
-        
+
         if (memRange.memDataInRange.empty())
         {
             printf("  No memory operations recorded.\n\n");
             continue;
         }
-        
+
         // Categorize memory operations
         uint64_t totalBytesAllocated = 0;
         uint64_t totalBytesFreed = 0;
@@ -252,88 +257,88 @@ void GmpProfiler::printMemoryActivity()
         size_t allocCount = 0;
         size_t freeCount = 0;
         size_t transferCount = 0;
-        
-        for (const auto& memData : memRange.memDataInRange)
+
+        for (const auto &memData : memRange.memDataInRange)
         {
             switch (memData.memoryOperationType)
             {
-                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
-                    totalBytesAllocated += memData.bytes;
-                    allocCount++;
-                    break;
-                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
-                    totalBytesFreed += memData.bytes;
-                    freeCount++;
-                    break;
-                default:
-                    break;
+            case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
+                totalBytesAllocated += memData.bytes;
+                allocCount++;
+                break;
+            case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
+                totalBytesFreed += memData.bytes;
+                freeCount++;
+                break;
+            default:
+                break;
             }
         }
-        
+
         // Print summary statistics
         printf("  Summary:\n");
-        printf("    Allocations: %zu operations, %llu bytes (%.2f MB)\n", 
+        printf("    Allocations: %zu operations, %llu bytes (%.2f MB)\n",
                allocCount, totalBytesAllocated, totalBytesAllocated / 1024.0 / 1024.0);
-        printf("    Deallocations: %zu operations, %llu bytes (%.2f MB)\n", 
+        printf("    Deallocations: %zu operations, %llu bytes (%.2f MB)\n",
                freeCount, totalBytesFreed, totalBytesFreed / 1024.0 / 1024.0);
-        
+
         // Print detailed memory operations
         printf("  Detailed operations:\n");
         for (size_t i = 0; i < memRange.memDataInRange.size(); i++)
         {
-            const auto& memData = memRange.memDataInRange[i];
-            
-            const char* opType = "";
+            const auto &memData = memRange.memDataInRange[i];
+
+            const char *opType = "";
             switch (memData.memoryOperationType)
             {
-                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
-                    opType = "ALLOC";
-                    break;
-                case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
-                    opType = "FREE";
-                    break;
-                default:
-                    opType = "UNKNOWN";
-                    break;
+            case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_ALLOCATION:
+                opType = "ALLOC";
+                break;
+            case CUPTI_ACTIVITY_MEMORY_OPERATION_TYPE_RELEASE:
+                opType = "FREE";
+                break;
+            default:
+                opType = "UNKNOWN";
+                break;
             }
-            
-            const char* memKind = "";
+
+            const char *memKind = "";
             switch (memData.memoryKind)
             {
-                case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
-                    memKind = "DEVICE";
-                    break;
-                case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
-                    memKind = "MANAGED";
-                    break;
-                case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
-                    memKind = "PINNED";
-                    break;
-                default:
-                    memKind = "UNKNOWN";
-                    break;
+            case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
+                memKind = "DEVICE";
+                break;
+            case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
+                memKind = "MANAGED";
+                break;
+            case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
+                memKind = "PINNED";
+                break;
+            default:
+                memKind = "UNKNOWN";
+                break;
             }
-            
-            printf("    [%zu] %s %s: %llu bytes at 0x%016llx", 
+
+            printf("    [%zu] %s %s: %llu bytes at 0x%016llx",
                    i + 1, opType, memKind, memData.bytes, memData.address);
-            
+
             if (memData.name && strlen(memData.name) > 0)
             {
                 printf(" (%s)", memData.name);
             }
-            
+
             if (memData.isAsync)
             {
                 printf(" [ASYNC, Stream %u]", memData.streamId);
             }
-            
-            printf(" [Device %u, Context %u, Correlation %u]\n", 
+
+            printf(" [Device %u, Context %u, Correlation %u]\n",
                    memData.deviceId, memData.contextId, memData.correlationId);
         }
-        
+
         printf("\n");
     }
-    
+
     printf("=== End Memory Activity Report ===\n\n");
 #else
     printf("CUPTI support is not enabled. Memory activity profiling is not available.\n");
@@ -343,7 +348,8 @@ void GmpProfiler::printMemoryActivity()
 std::vector<GmpMemRangeData> GmpProfiler::getMemoryActivity()
 {
 #ifdef USE_CUPTI
-    if(!isEnabled){
+    if (!isEnabled)
+    {
         return std::vector<GmpMemRangeData>();
     }
     return sessionManager.getAllMemDataOfType(GmpProfileType::MEMORY);
@@ -356,21 +362,28 @@ void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
 {
     std::string path = "./output/result.csv";
 
-    auto sumFunc = [](const std::vector<ProfilerRange>& ranges, size_t startIndex, size_t size){
+    auto sumFunc = [](const std::vector<ProfilerRange> &ranges, size_t startIndex, size_t size)
+    {
         std::unordered_map<std::string, double> combinedMetrics;
-        for(size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i){
-            for(const auto& metric : ranges[i].metricValues){
+        for (size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i)
+        {
+            for (const auto &metric : ranges[i].metricValues)
+            {
                 combinedMetrics[metric.first] += metric.second;
             }
         }
         return combinedMetrics;
     };
 
-    auto maxFunc = [](const std::vector<ProfilerRange>& ranges, size_t startIndex, size_t size){
+    auto maxFunc = [](const std::vector<ProfilerRange> &ranges, size_t startIndex, size_t size)
+    {
         std::unordered_map<std::string, double> maxMetrics;
-        for(size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i){
-            for(const auto& metric : ranges[i].metricValues){
-                if(maxMetrics.find(metric.first) == maxMetrics.end() || metric.second > maxMetrics[metric.first]){
+        for (size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i)
+        {
+            for (const auto &metric : ranges[i].metricValues)
+            {
+                if (maxMetrics.find(metric.first) == maxMetrics.end() || metric.second > maxMetrics[metric.first])
+                {
                     maxMetrics[metric.first] = metric.second;
                 }
             }
@@ -378,14 +391,18 @@ void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
         return maxMetrics;
     };
 
-    auto meanFunc = [](const std::vector<ProfilerRange>& ranges, size_t startIndex, size_t size){
+    auto meanFunc = [](const std::vector<ProfilerRange> &ranges, size_t startIndex, size_t size)
+    {
         std::unordered_map<std::string, double> meanMetrics;
-        for(size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i){
-            for(const auto& metric : ranges[i].metricValues){
+        for (size_t i = startIndex; i < startIndex + size && i < ranges.size(); ++i)
+        {
+            for (const auto &metric : ranges[i].metricValues)
+            {
                 meanMetrics[metric.first] += metric.second;
             }
         }
-        for(auto& metric : meanMetrics){
+        for (auto &metric : meanMetrics)
+        {
             metric.second /= size;
         }
         return meanMetrics;
@@ -483,7 +500,7 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
             else if (record->kind == CUPTI_ACTIVITY_KIND_MEMORY2)
             {
                 auto *memRecord = (CUpti_ActivityMemory4 *)record;
-                
+
                 auto result = sessionManager.accumulate<GmpMemSession>(
                     GmpProfileType::MEMORY,
                     [&memRecord](GmpMemSession *sessionPtr)
@@ -533,96 +550,103 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
 #endif
 }
 
-  void GmpProfiler::init()
-  {
+void GmpProfiler::init()
+{
 #ifdef USE_CUPTI
-      CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
-      CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMORY2));
-      CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
-                                                &GmpProfiler::bufferCompletedThunk));
-      instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
-      cuInit(0);
+    CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
+    CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMORY2));
+    CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
+                                              &GmpProfiler::bufferCompletedThunk));
+    instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
+    cuInit(0);
 
-      // Get the current ctx for the device
-      // Check if CUDA is already initialized
-      CUresult init_result = cuDriverGetVersion(nullptr);
-      if (init_result != CUDA_SUCCESS) {
-          printf("Initializing CUDA driver...\n");
-          cuInit(0);
-      } else {
-          printf("CUDA driver already initialized\n");
-      }
-      
-      CUdevice cuDevice;
-      DRIVER_API_CALL(cuDeviceGet(&cuDevice, 0));
-      int computeCapabilityMajor = 0, computeCapabilityMinor = 0;
-      DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice));
-      DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice));
-      printf("Compute Capability of Device: %d.%d\n", computeCapabilityMajor, computeCapabilityMinor);
+    // Get the current ctx for the device
+    // Check if CUDA is already initialized
+    CUresult init_result = cuDriverGetVersion(nullptr);
+    if (init_result != CUDA_SUCCESS)
+    {
+        printf("Initializing CUDA driver...\n");
+        cuInit(0);
+    }
+    else
+    {
+        printf("CUDA driver already initialized\n");
+    }
 
-      if (computeCapabilityMajor < 7 || (computeCapabilityMajor == 7 && computeCapabilityMinor < 5))
-      {
+    CUdevice cuDevice;
+    DRIVER_API_CALL(cuDeviceGet(&cuDevice, 0));
+    int computeCapabilityMajor = 0, computeCapabilityMinor = 0;
+    DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMajor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, cuDevice));
+    DRIVER_API_CALL(cuDeviceGetAttribute(&computeCapabilityMinor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, cuDevice));
+    printf("Compute Capability of Device: %d.%d\n", computeCapabilityMajor, computeCapabilityMinor);
+
+    if (computeCapabilityMajor < 7 || (computeCapabilityMajor == 7 && computeCapabilityMinor < 5))
+    {
         std::cerr << "Range Profiling is supported only on devices with compute capability 7.5 and above" << std::endl;
         exit(EXIT_FAILURE);
-      }
+    }
 
-      RangeProfilerConfig config;
-      // default config values
-      config.maxNumOfRanges = MAX_NUM_RANGES;
-      config.minNestingLevel = MIN_NESTING_LEVEL;
-      config.numOfNestingLevel = MAX_NUM_NESTING_LEVEL;
+    RangeProfilerConfig config;
+    // default config values
+    config.maxNumOfRanges = MAX_NUM_RANGES;
+    config.minNestingLevel = MIN_NESTING_LEVEL;
+    config.numOfNestingLevel = MAX_NUM_NESTING_LEVEL;
 
-      // Should not create a context!!!!!!!!!
-      CUcontext cuContext;
-      // DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
-      DRIVER_API_CALL(cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
-      DRIVER_API_CALL(cuCtxSetCurrent(cuContext)); // matches what Eigen/Runtime use
-      instance->rangeProfilerTargetPtr = std::make_shared<RangeProfilerTarget>(cuContext, config);
+    // Should not create a context!!!!!!!!!
+    CUcontext cuContext;
+    // DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
+    DRIVER_API_CALL(cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
+    DRIVER_API_CALL(cuCtxSetCurrent(cuContext)); // matches what Eigen/Runtime use
+    instance->rangeProfilerTargetPtr = std::make_shared<RangeProfilerTarget>(cuContext, config);
 
-      // Get chip name
-      std::string chipName;
-      CUPTI_CALL(RangeProfilerTarget::GetChipName(cuDevice, chipName));
+    // Get chip name
+    std::string chipName;
+    CUPTI_CALL(RangeProfilerTarget::GetChipName(cuDevice, chipName));
 
-      // Get Counter availability image
-      std::vector<uint8_t> counterAvailabilityImage;
-      CUPTI_CALL(RangeProfilerTarget::GetCounterAvailabilityImage(cuContext, counterAvailabilityImage));
+    // Get Counter availability image
+    std::vector<uint8_t> counterAvailabilityImage;
+    CUPTI_CALL(RangeProfilerTarget::GetCounterAvailabilityImage(cuContext, counterAvailabilityImage));
 
-      // Create config image
-      std::vector<uint8_t> configImage;
-      instance->cuptiProfilerHost->SetUp(chipName, counterAvailabilityImage);
-      CUPTI_CALL(instance->cuptiProfilerHost->CreateConfigImage(instance->metrics, configImage));
+    // Create config image
+    std::vector<uint8_t> configImage;
+    instance->cuptiProfilerHost->SetUp(chipName, counterAvailabilityImage);
+    CUPTI_CALL(instance->cuptiProfilerHost->CreateConfigImage(instance->metrics, configImage));
 
-      // Enable Range profiler
-      CUPTI_CALL(instance->rangeProfilerTargetPtr->EnableRangeProfiler());
+    // Enable Range profiler
+    CUPTI_CALL(instance->rangeProfilerTargetPtr->EnableRangeProfiler());
 
-      // Create CounterData Image
-      CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
+    // Create CounterData Image
+    CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
 
-      CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
-          ENABLE_USER_RANGE ? CUPTI_UserRange : CUPTI_AutoRange,
-          ENABLE_USER_RANGE ? CUPTI_UserReplay : CUPTI_KernelReplay,
-          configImage,
-          instance->counterDataImage));
+    CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
+        ENABLE_USER_RANGE ? CUPTI_UserRange : CUPTI_AutoRange,
+        ENABLE_USER_RANGE ? CUPTI_UserReplay : CUPTI_KernelReplay,
+        configImage,
+        instance->counterDataImage));
 #endif
-      isInitialized = true;
-  }
+    isInitialized = true;
+}
 
-  GmpResult GmpProfiler::checkActivityAndRangeResultMatch(){
-    if(!isEnabled){
+GmpResult GmpProfiler::checkActivityAndRangeResultMatch()
+{
+    if (!isEnabled)
+    {
         return GmpResult::SUCCESS;
     }
-    
+
     auto allRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
     size_t kernelInActivityRange = 0;
-    for(auto& rangeData: allRangeData){
+    for (auto &rangeData : allRangeData)
+    {
         kernelInActivityRange += rangeData.kernelDataInRange.size();
     }
 
     size_t kernelInRangeProfilerRange = 0;
     cuptiProfilerHost->GetNumOfRanges(counterDataImage, kernelInRangeProfilerRange);
-    if(kernelInActivityRange != kernelInRangeProfilerRange){
+    if (kernelInActivityRange != kernelInRangeProfilerRange)
+    {
         GMP_LOG_ERROR("Kernel activity range and range profiler range do not match.");
         return GmpResult::ERROR;
     }
     return GmpResult::SUCCESS;
-  }
+}
