@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <cuda.h>
+
 #include "gmp/range_profiling.h"
 #include "gmp/data_struct.h"
 
@@ -89,7 +90,7 @@ public:
   {
     memData.push_back(data);
   }
-  
+
   std::vector<GmpKernelData> getKernelData() const
   {
     return kernelData;
@@ -105,7 +106,7 @@ protected:
   ApiRuntimeRecord runtimeData; // Data structure to hold timing information
   CUpti_SubscriberHandle runtimeSubscriber;
   std::vector<GmpKernelData> kernelData; // Names of kernels launched in this session
-  std::vector<GmpMemData> memData; // Memory operations in this session
+  std::vector<GmpMemData> memData;       // Memory operations in this session
   bool is_active = true;
   CUcontext context = 0;
 };
@@ -141,7 +142,6 @@ public:
 private:
 };
 
-
 class SessionManager
 {
 public:
@@ -172,12 +172,14 @@ public:
       auto &sessionPtr = ActivityMap[type].back();
       if (auto derivedSessionPtr = dynamic_cast<DerivedSession *>(sessionPtr.get()))
       {
-        if(sessionPtr->isActive()){
+        if (sessionPtr->isActive())
+        {
           callback(derivedSessionPtr);
         }
         return GmpResult::SUCCESS;
       }
-      else{
+      else
+      {
         return GmpResult::ERROR;
       }
     }
@@ -238,7 +240,7 @@ public:
   ~GmpProfiler();
 
   // This function has to be called before any kernel launches, otherwise the profiler will catch nothing.
-  // This is because this function will initialize a cuda context. If another context is created by luanching a kernel, 
+  // This is because this function will initialize a cuda context. If another context is created by luanching a kernel,
   // the profiler will not be able to catch the kernel launches in that context.
   void init();
 
@@ -285,7 +287,7 @@ public:
   // Print memory activity for all ranges
   void printMemoryActivity();
 
-  // Get all memory activity data  
+  // Get all memory activity data
   std::vector<GmpMemRangeData> getMemoryActivity();
 
   void produceOutput(GmpOutputKernelReduction option);
@@ -310,11 +312,13 @@ public:
     metrics.push_back(metric);
   }
 
-  void enable(){
+  void enable()
+  {
     isEnabled = true;
   }
 
-  void disable(){
+  void disable()
+  {
     isEnabled = false;
   }
 
