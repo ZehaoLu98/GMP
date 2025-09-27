@@ -1,4 +1,5 @@
 #include "gmp/profile.h"
+#include <nvtx3/nvtx3.hpp>
 
 GmpProfiler *GmpProfiler::instance = nullptr;
 
@@ -94,6 +95,9 @@ GmpResult GmpProfiler::pushRangeProfilerRange(const char *rangeName)
 
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
+#ifdef ENABLE_NVTX
+    nvtxRangePushA(name.c_str());
+#endif
 #ifdef USE_CUPTI
     if (!isEnabled)
     {
@@ -148,6 +152,9 @@ GmpResult GmpProfiler::popRangeProfilerRange()
 
 GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 {
+#ifdef ENABLE_NVTX
+    nvtxRangePop();
+#endif
 #ifdef USE_CUPTI
     if (!isEnabled)
     {
@@ -360,6 +367,7 @@ std::vector<GmpMemRangeData> GmpProfiler::getMemoryActivity()
 
 void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
 {
+#ifdef USE_CUPTI
     std::string path = "./output/result.csv";
 
     auto sumFunc = [](const std::vector<ProfilerRange> &ranges, size_t startIndex, size_t size)
@@ -447,6 +455,7 @@ void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
         rangeProfileOffset += kernelNum;
     }
     outputFile.close();
+#endif
 }
 
 void GmpProfiler::bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
@@ -629,6 +638,7 @@ void GmpProfiler::init()
 
 GmpResult GmpProfiler::checkActivityAndRangeResultMatch()
 {
+#ifdef USE_CUPTI
     if (!isEnabled)
     {
         return GmpResult::SUCCESS;
@@ -648,5 +658,6 @@ GmpResult GmpProfiler::checkActivityAndRangeResultMatch()
         GMP_LOG_ERROR("Kernel activity range and range profiler range do not match.");
         return GmpResult::ERROR;
     }
+#endif
     return GmpResult::SUCCESS;
 }

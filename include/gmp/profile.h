@@ -9,11 +9,13 @@
 #include <map>
 #include <memory>
 #include <cuda.h>
+#include <nvtx3/nvtx3.hpp>
 
 #include "gmp/range_profiling.h"
 #include "gmp/data_struct.h"
 
-#define USE_CUPTI
+// #define USE_CUPTI
+#define ENABLE_NVTX
 
 #ifdef USE_CUPTI
 
@@ -309,7 +311,9 @@ public:
 
   void addMetrics(const char *metric)
   {
+#ifdef USE_CUPTI
     metrics.push_back(metric);
+#endif
   }
 
   void enable()
