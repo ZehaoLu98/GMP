@@ -13,6 +13,7 @@
 
 #include "gmp/range_profiling.h"
 #include "gmp/data_struct.h"
+#include "gmp/log.h"
 
 // #define USE_CUPTI
 #define ENABLE_NVTX
