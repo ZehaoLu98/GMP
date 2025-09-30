@@ -1,5 +1,5 @@
 #include "gmp/profile.h"
-#include <nvtx3/nvtx3.hpp>
+// #include <nvtx3/nvtx3.hpp>
 
 GmpProfiler *GmpProfiler::instance = nullptr;
 

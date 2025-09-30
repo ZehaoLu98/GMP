@@ -9,14 +9,14 @@
 #include <map>
 #include <memory>
 #include <cuda.h>
-#include <nvtx3/nvtx3.hpp>
+// #include <nvtx3/nvtx3.hpp>
 
 #include "gmp/range_profiling.h"
 #include "gmp/data_struct.h"
 #include "gmp/log.h"
 
-// #define USE_CUPTI
-#define ENABLE_NVTX
+#define USE_CUPTI
+// #define ENABLE_NVTX
 
 #ifdef USE_CUPTI
 
