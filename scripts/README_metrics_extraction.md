@@ -26,26 +26,35 @@ python3 extract_metrics.py logs/a100_eigen_forward_log.txt sm__cycles_active.max
 - `avg_<metric>`: Average value of the metric across kernels in the range
 - `kernel_names`: First few kernel names (truncated for readability)
 
-### 2. `extract_kernel_metrics.py` - Single Metric Extraction (Individual Kernels)
+### 2. `extract_kernel_metrics.py` - Single/Multiple Metric Extraction (Individual Kernels)
 
-Extracts a specific metric for each individual kernel (not accumulated by range).
+Extracts one or more metrics for each individual kernel (not accumulated by range). **NEW: Now supports multiple metrics in additional columns!**
 
 **Usage:**
 ```bash
-python3 extract_kernel_metrics.py <log_file> <metric_name> [output_file]
+python3 extract_kernel_metrics.py <log_file> <metric1> [metric2] [metric3] ... [--output output_file]
 ```
 
-**Example:**
+**Examples:**
 ```bash
-python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum individual_gpu_time.csv
-python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt sm__cycles_active.max individual_sm_cycles.csv
+# Single metric
+python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum
+
+# Multiple metrics in additional columns
+python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum sm__cycles_active.max
+
+# Multiple metrics with custom output filename
+python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum sm__cycles_active.max gpc__cycles_elapsed.max --output my_analysis.csv
 ```
 
 **Output:** CSV file with columns:
-- `kernel_id`: Sequential kernel ID
+- `kernel_id`: Sequential kernel ID (maintains launch order)
 - `range_name`: Name of the range this kernel belongs to
 - `kernel_name`: Kernel name (truncated for readability)
-- `<metric_name>`: Individual value of the metric for this kernel
+- `<metric1>`: Individual value of the first metric for this kernel
+- `<metric2>`: Individual value of the second metric for this kernel (if specified)
+- `<metric3>`: Individual value of the third metric for this kernel (if specified)
+- ... (additional columns for each metric specified)
 
 ### 3. `extract_all_metrics.py` - Comprehensive Extraction (Range Summary)
 
@@ -129,12 +138,12 @@ Based on the analyzed log file, the following metrics are available:
 | LN1_1 | 3 | 734912.000 | 244970.667 | _ZN5Eigen8internal15EigenMetaKernelI... |
 | Attention_1 | 440 | 2937120.000 | 6675.273 | _ZN5Eigen32EigenFloatContractionKernel... |
 
-### Individual Kernel Output (`gpu__time_duration.sum`):
-| kernel_id | range_name | kernel_name | gpu__time_duration.sum |
-|-----------|------------|-------------|------------------------|
-| 1 | LN1_1 | _ZN5Eigen8internal15EigenMetaKernelI... | 186656.000 |
-| 2 | LN1_1 | _ZN5Eigen8internal15EigenMetaKernelI... | 536768.000 |
-| 3 | LN1_1 | _ZN5Eigen8internal15EigenMetaKernelI... | 11488.000 |
+### Individual Kernel Output (Multiple Metrics):
+| kernel_id | range_name | kernel_name | gpu__time_duration.sum | sm__cycles_active.max | gpc__cycles_elapsed.max |
+|-----------|------------|-------------|------------------------|----------------------|-------------------------|
+| 1 | LN1_1 | _ZN5Eigen8internal15EigenMetaKernelI... | 186656.000 | 202406.000 | 205431.000 |
+| 2 | LN1_1 | _ZN5Eigen8internal15EigenMetaKernelI... | 536768.000 | 585733.000 | 590096.000 |
+| 3 | LN1_1 | _ZN5Eigen8internal15EigenMetaKernelI... | 11488.000 | 10474.000 | 12507.000 |
 
 ## File Format
 
@@ -153,14 +162,14 @@ Kernel: <kernel_name>
 
 ## Examples
 
-### Extract individual kernel GPU time duration:
+### Extract individual kernel values for multiple metrics:
 ```bash
-python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum
+python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum sm__cycles_active.max
 ```
 
-### Extract individual kernel SM cycles:
+### Extract individual kernel values for three metrics with custom output:
 ```bash
-python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt sm__cycles_active.max
+python3 extract_kernel_metrics.py logs/a100_eigen_forward_log.txt gpu__time_duration.sum sm__cycles_active.max gpc__cycles_elapsed.max --output my_results.csv
 ```
 
 ### Extract all metrics for individual kernels:
