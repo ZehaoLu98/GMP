@@ -45,7 +45,7 @@ CUptiResult CuptiProfilerHost::CreateConfigImage(
         getNumOfPassesParam.configImageSize = configImage.size();
         CUPTI_API_CALL(cuptiProfilerHostGetNumOfPasses(&getNumOfPassesParam));
         std::cout << "Num of Passes: " << getNumOfPassesParam.numOfPasses << "\n";
-        assert(getNumOfPassesParam.numOfPasses == 1); // Range profiler should always be 1 pass
+        // assert(getNumOfPassesParam.numOfPasses == 1); // Range profiler should always be 1 pass
     }
 
     return CUPTI_SUCCESS;

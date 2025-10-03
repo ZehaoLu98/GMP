@@ -339,27 +339,27 @@ private:
   std::vector<uint8_t> counterDataImage;
   std::vector<const char *> metrics = {
       // Group 1
-      // "gpu__time_duration.sum",
-      // "gpu__time_duration.max",
-      // "gpc__cycles_elapsed.avg.per_second",
-      // "gpc__cycles_elapsed.max",
-      // "sm__cycles_active.max",
+      "gpu__time_duration.sum",
+      "gpu__time_duration.max",
+      "gpc__cycles_elapsed.avg.per_second",
+      "gpc__cycles_elapsed.max",
+      "sm__cycles_active.max",
 
       // // Group 2
       // // Sub Group 1
-      // "smsp__inst_executed.sum",
-      // "smsp__sass_inst_executed_op_shared_ld.sum",
-      // "smsp__sass_inst_executed_op_shared_st.sum",
-      // "smsp__sass_inst_executed_op_global_ld.sum",
-      // "smsp__sass_inst_executed_op_global_st.sum",
+      "smsp__inst_executed.sum",
+      "smsp__sass_inst_executed_op_shared_ld.sum",
+      "smsp__sass_inst_executed_op_shared_st.sum",
+      "smsp__sass_inst_executed_op_global_ld.sum",
+      "smsp__sass_inst_executed_op_global_st.sum",
       // // Sub Group 2
-      // "sm__pipe_alu_cycles_active.max",
-      // "sm__pipe_fma_cycles_active.max",
-      // "sm__pipe_tensor_cycles_active.max",
-      // "sm__pipe_shared_cycles_active.max",
+      "sm__pipe_alu_cycles_active.max",
+      "sm__pipe_fma_cycles_active.max",
+      "sm__pipe_tensor_cycles_active.max",
+      "sm__pipe_shared_cycles_active.max",
       // // Sub Group 3
-      // "sm__sass_inst_executed_op_ldgsts_cache_access.sum",
-      // "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum",
+      "sm__sass_inst_executed_op_ldgsts_cache_access.sum",
+      "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum",
 
       // // Group 3
       // // Sub Group 1
