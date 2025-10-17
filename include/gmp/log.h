@@ -35,6 +35,7 @@
     do {                                                                   \
         auto __gmp_start = std::chrono::high_resolution_clock::now();      \
         stmt;                                                              \
+        cudaDeviceSynchronize();                                           \
         auto __gmp_end = std::chrono::high_resolution_clock::now();        \
         auto __gmp_duration =                                              \
             std::chrono::duration_cast<std::chrono::microseconds>(         \
