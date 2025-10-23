@@ -70,29 +70,6 @@ GmpProfiler::~GmpProfiler()
 #endif
 }
 
-GmpResult GmpProfiler::pushRangeProfilerRange(const char *rangeName)
-{
-#ifdef USE_CUPTI
-    if (!isEnabled)
-    {
-        return GmpResult::SUCCESS;
-    }
-    if (rangeProfilerTargetPtr)
-    {
-        cudaDeviceSynchronize();
-        CUPTI_API_CALL(rangeProfilerTargetPtr->PushRange(rangeName));
-        return GmpResult::SUCCESS;
-    }
-    else
-    {
-        GMP_LOG_ERROR("Range profiler target is not initialized.");
-        return GmpResult::ERROR;
-    }
-#else
-    return GmpResult::SUCCESS;
-#endif
-}
-
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
 #ifdef ENABLE_NVTX
@@ -123,6 +100,29 @@ GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
     }
 
     return GmpResult::SUCCESS;
+#else
+    return GmpResult::SUCCESS;
+#endif
+}
+
+GmpResult GmpProfiler::pushRangeProfilerRange(const char *rangeName)
+{
+#ifdef USE_CUPTI
+    if (!isEnabled)
+    {
+        return GmpResult::SUCCESS;
+    }
+    if (rangeProfilerTargetPtr)
+    {
+        cudaDeviceSynchronize();
+        CUPTI_API_CALL(rangeProfilerTargetPtr->PushRange(rangeName));
+        return GmpResult::SUCCESS;
+    }
+    else
+    {
+        GMP_LOG_ERROR("Range profiler target is not initialized.");
+        return GmpResult::ERROR;
+    }
 #else
     return GmpResult::SUCCESS;
 #endif
