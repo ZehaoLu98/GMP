@@ -1,0 +1,125 @@
+# GMP (GPU Memory and Performance) Profiler .gitignore
+
+# Build directories and artifacts
+build/
+temp/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled binaries and libraries
+*.so
+*.so.*
+*.a
+*.lib
+*.dll
+*.dylib
+*.exe
+
+# Python compiled files and packages
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+*.egg
+
+# Python virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# C/C++ build artifacts
+*.o
+*.obj
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# CUDA build artifacts
+*.ptx
+*.cubin
+*.fatbin
+
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Profiler output files
+output/
+results/
+*.csv
+*.json
+*.prof
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Package manager files
+node_modules/
+.npm
+.pnpm-debug.log*
+
+# Test coverage
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Documentation build
+docs/_build/
+site/
+
+# Local configuration files
+.env
+.env.local
+config.local.json
+
+# CUDA profiler outputs
+*.nvprof
+*.qdrep
+*.sqlite
+
+# GMP specific ignores
+# Compiled Python extensions with version-specific names
+gmp_py_wrapper.cpython-*-linux-gnu.so
+gmp_py_wrapper.cpython-*-darwin.so
+gmp_py_wrapper.cpython-*-win*.pyd
+
+# Local build scripts output
+build.log
+install.log
