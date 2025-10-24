@@ -24,6 +24,7 @@
 #include "gmp/log.h"
 #include "gmp/callback.h"
 #include "gmp/util.h"
+#include <string>
 
 #define ENABLE_USER_RANGE false
 #define MAX_NUM_RANGES 2000
@@ -305,7 +306,7 @@ public:
 #endif
   }
 
-  void addMetrics(const char *metric)
+  void addMetrics(const std::string &metric)
   {
 #ifdef USE_CUPTI
     metrics.push_back(metric);
@@ -332,7 +333,7 @@ private:
   CuptiProfilerHostPtr cuptiProfilerHost = nullptr;
   SessionManager sessionManager;
   std::vector<uint8_t> counterDataImage;
-  std::vector<const char *> metrics = {
+  std::vector<std::string> metrics = {
       // Group 1
       // "gpu__time_duration.sum",
       // "gpu__time_duration.max",

@@ -101,7 +101,7 @@ public:
     }
     
     void add_metrics(const std::string& metric) {
-        profiler->addMetrics(metric.c_str());
+        profiler->addMetrics(metric);
     }
 };
 

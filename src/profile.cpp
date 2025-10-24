@@ -3,6 +3,16 @@
 
 GmpProfiler *GmpProfiler::instance = nullptr;
 
+// Create a c style array of char* from std::vector<std::string>
+std::vector<const char*> createCStyleStringArray(const std::vector<std::string>& strVec) {
+    std::vector<const char*> cStrArray;
+    for (const auto& str : strVec) {
+        cStrArray.push_back(str.c_str());
+    }
+    return cStrArray;
+}
+
+
 #ifdef USE_CUPTI
 GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr)
 {
@@ -198,6 +208,7 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 
 void GmpProfiler::printProfilerRanges(GmpOutputKernelReduction option)
 {
+    std::vector<const char*> c_metrics = createCStyleStringArray(metrics);
 #ifdef USE_CUPTI
     if (cuptiProfilerHost)
     {
@@ -207,7 +218,7 @@ void GmpProfiler::printProfilerRanges(GmpOutputKernelReduction option)
         printf("Number of ranges: %zu\n", numRanges);
         for (size_t rangeIndex = 0; rangeIndex < numRanges; ++rangeIndex)
         {
-            CUPTI_API_CALL(cuptiProfilerHost->EvaluateCounterData(rangeIndex, metrics, counterDataImage));
+            CUPTI_API_CALL(cuptiProfilerHost->EvaluateCounterData(rangeIndex, c_metrics, counterDataImage));
         }
 
         // cuptiProfilerHost->PrintProfilerRanges();
@@ -561,6 +572,9 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
 
 void GmpProfiler::init()
 {
+    // create a copy of metrics as c strings
+    std::vector<const char*> c_metrics = createCStyleStringArray(metrics);
+
 #ifdef USE_CUPTI
     CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
     CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMORY2));
@@ -619,13 +633,13 @@ void GmpProfiler::init()
     // Create config image
     std::vector<uint8_t> configImage;
     instance->cuptiProfilerHost->SetUp(chipName, counterAvailabilityImage);
-    CUPTI_CALL(instance->cuptiProfilerHost->CreateConfigImage(instance->metrics, configImage));
+    CUPTI_CALL(instance->cuptiProfilerHost->CreateConfigImage(c_metrics, configImage));
 
     // Enable Range profiler
     CUPTI_CALL(instance->rangeProfilerTargetPtr->EnableRangeProfiler());
 
     // Create CounterData Image
-    CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(instance->metrics, instance->counterDataImage));
+    CUPTI_CALL(instance->rangeProfilerTargetPtr->CreateCounterDataImage(c_metrics, instance->counterDataImage));
 
     CUPTI_CALL(instance->rangeProfilerTargetPtr->SetConfig(
         ENABLE_USER_RANGE ? CUPTI_UserRange : CUPTI_AutoRange,
