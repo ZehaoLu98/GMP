@@ -66,7 +66,6 @@ public:
     void PrintProfilerRangesWithNames(const std::vector<GmpRangeData>& rangeDataVec)
     {
         size_t currProfilerKernelCounter = 0;
-        std::cout<<"m_profilerRanges size: "<<m_profilerRanges.size()<<"\n";
         for(int usrRangeIndex = 0; usrRangeIndex < rangeDataVec.size() && currProfilerKernelCounter < m_profilerRanges.size(); ++usrRangeIndex) {
             auto& rangeData = rangeDataVec[usrRangeIndex];
             std::cout << "Range Name: " << rangeData.name << "\n";

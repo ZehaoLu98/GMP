@@ -19,10 +19,6 @@ GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpP
     assert(sessionPtr != nullptr);
     if (ActivityMap[type].empty() || !ActivityMap[type].back()->isActive())
     {
-        // CUPTI_CALL(cuptiSubscribe(&runtimeSubscriber, (CUpti_CallbackFunc)getTimestampCallback, (void *)&sessionPtr->getRuntimeData()));
-        // CUPTI_CALL(cuptiEnableDomain(1, runtimeSubscriber, CUPTI_CB_DOMAIN_RUNTIME_API));
-        // sessionPtr->setRuntimeHandle(runtimeSubscriber);
-
         GMP_LOG_DEBUG("Session " + sessionPtr->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " added.");
 
         ActivityMap[type].push_back(std::move(sessionPtr));
@@ -576,6 +572,8 @@ void GmpProfiler::init()
     std::vector<const char*> c_metrics = createCStyleStringArray(metrics);
 
 #ifdef USE_CUPTI
+
+    // Initialize CUPTI Activity API
     CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
     CUPTI_CALL(cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMORY2));
     CUPTI_CALL(cuptiActivityRegisterCallbacks(&GmpProfiler::bufferRequestedThunk,
@@ -583,8 +581,6 @@ void GmpProfiler::init()
     instance->cuptiProfilerHost = std::make_shared<CuptiProfilerHost>();
     cuInit(0);
 
-    // Get the current ctx for the device
-    // Check if CUDA is already initialized
     CUresult init_result = cuDriverGetVersion(nullptr);
     if (init_result != CUDA_SUCCESS)
     {
@@ -615,9 +611,8 @@ void GmpProfiler::init()
     config.minNestingLevel = MIN_NESTING_LEVEL;
     config.numOfNestingLevel = MAX_NUM_NESTING_LEVEL;
 
-    // Should not create a context!!!!!!!!!
+    // Retain current context
     CUcontext cuContext;
-    // DRIVER_API_CALL(cuCtxCreate(&cuContext, 0, cuDevice));
     DRIVER_API_CALL(cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
     DRIVER_API_CALL(cuCtxSetCurrent(cuContext)); // matches what Eigen/Runtime use
     instance->rangeProfilerTargetPtr = std::make_shared<RangeProfilerTarget>(cuContext, config);
@@ -658,16 +653,16 @@ GmpResult GmpProfiler::checkActivityAndRangeResultMatch()
         return GmpResult::SUCCESS;
     }
 
-    auto allRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
-    size_t kernelInActivityRange = 0;
-    for (auto &rangeData : allRangeData)
+    auto allRangeActivityData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
+    size_t activityRecordCount = 0;
+    for (auto &rangeData : allRangeActivityData)
     {
-        kernelInActivityRange += rangeData.kernelDataInRange.size();
+        activityRecordCount += rangeData.kernelDataInRange.size();
     }
 
     size_t kernelInRangeProfilerRange = 0;
     cuptiProfilerHost->GetNumOfRanges(counterDataImage, kernelInRangeProfilerRange);
-    if (kernelInActivityRange != kernelInRangeProfilerRange)
+    if (activityRecordCount != kernelInRangeProfilerRange)
     {
         GMP_LOG_ERROR("Kernel activity range and range profiler range do not match.");
         return GmpResult::ERROR;

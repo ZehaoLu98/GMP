@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <map>
 #include <memory>
+#include <string>
 #include <cuda.h>
 // #include <nvtx3/nvtx3.hpp>
 
@@ -24,7 +25,6 @@
 #include "gmp/log.h"
 #include "gmp/callback.h"
 #include "gmp/util.h"
-#include <string>
 
 #define ENABLE_USER_RANGE false
 #define MAX_NUM_RANGES 2000
@@ -233,6 +233,7 @@ private:
 };
 #endif
 
+// Singleton Profiler Class, exposes high-level profiling APIs
 class GmpProfiler
 {
   GmpProfiler(const GmpProfiler &) = delete;
@@ -243,9 +244,6 @@ public:
 
   ~GmpProfiler();
 
-  // This function has to be called before any kernel launches, otherwise the profiler will catch nothing.
-  // This is because this function will initialize a cuda context. If another context is created by luanching a kernel,
-  // the profiler will not be able to catch the kernel launches in that context.
   void init();
 
   static GmpProfiler *getInstance()
@@ -276,7 +274,6 @@ public:
   // Activity + Range Profiling API
   GmpResult pushRange(const std::string &name, GmpProfileType type);
 
-
   // Activity + Range Profiling API
   GmpResult popRange(const std::string &name, GmpProfileType type);
 
@@ -288,8 +285,6 @@ public:
 
   // Get all memory activity data
   std::vector<GmpMemRangeData> getMemoryActivity();
-
-  void produceOutput(GmpOutputKernelReduction option);
 
   bool isAllPassSubmitted()
   {
@@ -305,6 +300,8 @@ public:
     CUPTI_API_CALL(rangeProfilerTargetPtr->DecodeCounterData());
 #endif
   }
+
+  void produceOutput(GmpOutputKernelReduction option);
 
   void addMetrics(const std::string &metric)
   {
@@ -414,12 +411,7 @@ private:
   void bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
                            uint8_t *buffer, size_t size, size_t validSize);
 
+  // Check if the number of kernels recorded by activity API matches that by range profiler
   GmpResult checkActivityAndRangeResultMatch();
-
-  // Range Profiling API
-  GmpResult pushRangeProfilerRange(const char *rangeName);
-
-  // Range Profiling API
-  GmpResult popRangeProfilerRange();
 };
 #endif // GMP_PROFILE_H
