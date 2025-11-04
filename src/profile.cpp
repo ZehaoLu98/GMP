@@ -437,6 +437,11 @@ void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
     {
         const auto &activityRange = activityAllRangeData[activityRangeIdx];
         auto kernelNum = activityRange.kernelDataInRange.size();
+        if (kernelNum == 0)
+        {
+            GMP_LOG_DEBUG("Skipping kernel reduction for range '" + activityRange.name + "' because it contains no kernel records.");
+            continue;
+        }
         outputFile.precision(2);
 
         std::unordered_map<std::string, double> reducedMetrics;
