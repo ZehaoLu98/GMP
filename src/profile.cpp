@@ -1,5 +1,5 @@
 #include "gmp/profile.h"
-// #include <nvtx3/nvtx3.hpp>
+#include <nvtx3/nvtx3.hpp>
 
 GmpProfiler *GmpProfiler::instance = nullptr;
 
@@ -68,6 +68,13 @@ GmpProfiler::GmpProfiler()
 
 GmpProfiler::~GmpProfiler()
 {
+#ifdef ENABLE_NVTX
+    // Clean up any remaining NVTX ranges
+    if (isEnabled)
+    {
+        nvtxManager_.clearAllRanges();
+    }
+#endif
 #ifdef USE_CUPTI
     CUPTI_CALL(cuptiActivityFlushAll(1));
     CUPTI_CALL(cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL));
@@ -79,7 +86,11 @@ GmpProfiler::~GmpProfiler()
 GmpResult GmpProfiler::pushRange(const std::string &name, GmpProfileType type)
 {
 #ifdef ENABLE_NVTX
-    nvtxRangePushA(name.c_str());
+    if (isEnabled)
+    {
+        std::cout << "Pushing NVTX range: " << name << std::endl;
+        nvtxManager_.startRange(name);
+    }
 #endif
 #ifdef USE_CUPTI
     if (!isEnabled)
@@ -159,7 +170,10 @@ GmpResult GmpProfiler::popRangeProfilerRange()
 GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 {
 #ifdef ENABLE_NVTX
-    nvtxRangePop();
+    if (isEnabled)
+    {
+        nvtxManager_.endRange(name);
+    }
 #endif
 #ifdef USE_CUPTI
     if (!isEnabled)

@@ -10,14 +10,19 @@
 #include <memory>
 #include <string>
 #include <cuda.h>
-// #include <nvtx3/nvtx3.hpp>
 
 #include "gmp/range_profiling.h"
 #include "gmp/data_struct.h"
 #include "gmp/log.h"
 
-#define USE_CUPTI
-// #define ENABLE_NVTX
+// #define USE_CUPTI
+#define ENABLE_NVTX
+
+#ifdef ENABLE_NVTX
+#include <nvtx3/nvtx3.hpp>
+#include <stack>
+#include <unordered_map>
+#endif
 
 #ifdef USE_CUPTI
 
@@ -233,6 +238,62 @@ private:
 };
 #endif
 
+#ifdef ENABLE_NVTX
+// NVTX Range Manager - independent of CUPTI
+class NvtxRangeManager {
+public:
+  NvtxRangeManager() = default;
+  ~NvtxRangeManager() = default;
+
+  // Start an NVTX range and return its ID
+  nvtxRangeId_t startRange(const std::string& name) {
+    nvtxRangeId_t rangeId = nvtxRangeStartA(name.c_str());
+    activeRanges_.push(rangeId);
+    rangeNameMap_[rangeId] = name;
+    return rangeId;
+  }
+
+  // End the most recent NVTX range
+  bool endRange(const std::string& expectedName = "") {
+    if (activeRanges_.empty()) {
+      return false;
+    }
+    
+    nvtxRangeId_t rangeId = activeRanges_.top();
+    activeRanges_.pop();
+    
+    // Optional: verify the name matches what we expect
+    if (!expectedName.empty() && rangeNameMap_[rangeId] != expectedName) {
+      // Log warning but still end the range
+      // Note: In a production system, you might want to handle this differently
+    }
+    
+    nvtxRangeEnd(rangeId);
+    rangeNameMap_.erase(rangeId);
+    return true;
+  }
+
+  // Get the number of active ranges
+  size_t getActiveRangeCount() const {
+    return activeRanges_.size();
+  }
+
+  // Clear all ranges (emergency cleanup)
+  void clearAllRanges() {
+    while (!activeRanges_.empty()) {
+      nvtxRangeId_t rangeId = activeRanges_.top();
+      activeRanges_.pop();
+      nvtxRangeEnd(rangeId);
+      rangeNameMap_.erase(rangeId);
+    }
+  }
+
+private:
+  std::stack<nvtxRangeId_t> activeRanges_;
+  std::unordered_map<nvtxRangeId_t, std::string> rangeNameMap_;
+};
+#endif
+
 // Singleton Profiler Class, exposes high-level profiling APIs
 class GmpProfiler
 {
@@ -325,11 +386,10 @@ private:
   bool isInitialized = false;
   bool isEnabled = false;
 
-#ifdef USE_CUPTI
-  RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
-  CuptiProfilerHostPtr cuptiProfilerHost = nullptr;
-  SessionManager sessionManager;
-  std::vector<uint8_t> counterDataImage;
+#ifdef ENABLE_NVTX
+  NvtxRangeManager nvtxManager_;
+#endif
+
   std::vector<std::string> metrics = {
       // Group 1
       // "gpu__time_duration.sum",
@@ -387,6 +447,12 @@ private:
       // "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio",
       // "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio",
   };
+#ifdef USE_CUPTI
+  RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
+  CuptiProfilerHostPtr cuptiProfilerHost = nullptr;
+  SessionManager sessionManager;
+  std::vector<uint8_t> counterDataImage;
+
 #endif
 
   static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
@@ -413,5 +479,9 @@ private:
 
   // Check if the number of kernels recorded by activity API matches that by range profiler
   GmpResult checkActivityAndRangeResultMatch();
+  
+  GmpResult pushRangeProfilerRange(const char *rangeName);
+
+  GmpResult popRangeProfilerRange();
 };
 #endif // GMP_PROFILE_H
