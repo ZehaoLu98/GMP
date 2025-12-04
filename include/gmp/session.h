@@ -4,10 +4,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
-
-#ifdef USE_CUPTI
 #include <cupti.h>
-#endif
 
 #include "gmp/data_struct.h"
 

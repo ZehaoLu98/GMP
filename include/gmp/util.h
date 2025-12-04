@@ -40,7 +40,7 @@ do                                                                              
 do                                                                                  \
 {                                                                                   \
     GmpResult _status = apiFunctionCall;                                             \
-    if (_status != GmpResult::SUCCESS)                                                    \
+    if (_status == GmpResult::ERROR)                                                    \
     {                                                                               \
         std::cerr << "\n\nError: " << __FILE__ << ":" << __LINE__ << ": Function "  \
         << #apiFunctionCall << ".\n\n";                                             \

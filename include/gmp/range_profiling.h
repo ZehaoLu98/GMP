@@ -63,20 +63,22 @@ public:
 
     void PrintProfilerRanges();
 
-    void PrintProfilerRangesWithNames(const std::vector<GmpRangeData>& rangeDataVec)
+    void PrintProfilerRangesWithNames(const std::vector<GmpRangeData> &rangeDataVec)
     {
         size_t currProfilerKernelCounter = 0;
-        for(int usrRangeIndex = 0; usrRangeIndex < rangeDataVec.size() && currProfilerKernelCounter < m_profilerRanges.size(); ++usrRangeIndex) {
-            auto& rangeData = rangeDataVec[usrRangeIndex];
+        for (int usrRangeIndex = 0; usrRangeIndex < rangeDataVec.size() && currProfilerKernelCounter < m_profilerRanges.size(); ++usrRangeIndex)
+        {
+            auto &rangeData = rangeDataVec[usrRangeIndex];
             std::cout << "Range Name: " << rangeData.name << "\n";
             std::cout << "======================================================================================\n";
-            for(auto& kernelData : rangeData.kernelDataInRange) {
-                if(currProfilerKernelCounter >= m_profilerRanges.size()) {
+            for (auto &kernelData : rangeData.kernelDataInRange)
+            {
+                if (currProfilerKernelCounter >= m_profilerRanges.size())
+                {
                     break;
-                }   
-                std::cout << "Kernel: " << kernelData.name << 
-                "<<<{" << kernelData.grid_size[0] << ", " << kernelData.grid_size[1] << ", " << kernelData.grid_size[2] << "}, {" 
-                << kernelData.block_size[0] << ", " << kernelData.block_size[1] << ", " << kernelData.block_size[2] << "} >>>" << "\n";
+                }
+                std::cout << "Kernel: " << kernelData.name << "<<<{" << kernelData.grid_size[0] << ", " << kernelData.grid_size[1] << ", " << kernelData.grid_size[2] << "}, {"
+                          << kernelData.block_size[0] << ", " << kernelData.block_size[1] << ", " << kernelData.block_size[2] << "} >>>" << "\n";
                 const auto &profilerRange = m_profilerRanges[currProfilerKernelCounter];
                 std::cout << "-----------------------------------------------------------------------------------\n";
                 for (const auto &metric : profilerRange.metricValues)
@@ -92,10 +94,12 @@ public:
         }
     }
 
-    std::unordered_map<std::string, double> getMetrics(size_t startIndex, size_t size, std::function<std::unordered_map<std::string, double>(const std::vector<ProfilerRange>&, size_t, size_t)> transformFunc){
+    std::unordered_map<std::string, double> getRangeMetrics(size_t startIndex, size_t size, std::function<std::unordered_map<std::string, double>(const std::vector<ProfilerRange> &, size_t, size_t)> transformFunc)
+    {
         assert(startIndex < m_profilerRanges.size() && (startIndex + size) <= m_profilerRanges.size());
-        if(size == 1){
-            assert(startIndex<m_profilerRanges.size());
+        if (size == 1)
+        {
+            assert(startIndex < m_profilerRanges.size());
             return m_profilerRanges[startIndex].metricValues;
         }
         return transformFunc(m_profilerRanges, startIndex, size);

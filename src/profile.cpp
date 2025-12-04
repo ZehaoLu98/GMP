@@ -1,3 +1,4 @@
+#include <set>
 #include "gmp/profile.h"
 #ifdef ENABLE_NVTX
 #include <nvtx3/nvtx3.hpp>
@@ -6,9 +7,11 @@
 GmpProfiler *GmpProfiler::instance = nullptr;
 
 // Create a c style array of char* from std::vector<std::string>
-std::vector<const char*> createCStyleStringArray(const std::vector<std::string>& strVec) {
-    std::vector<const char*> cStrArray;
-    for (const auto& str : strVec) {
+std::vector<const char *> createCStyleStringArray(const std::vector<std::string> &strVec)
+{
+    std::vector<const char *> cStrArray;
+    for (const auto &str : strVec)
+    {
         cStrArray.push_back(str.c_str());
     }
     return cStrArray;
@@ -71,7 +74,7 @@ void CUPTIAPI GmpProfiler::bufferRequestedThunk(uint8_t **buffer, size_t *size, 
 }
 
 void CUPTIAPI GmpProfiler::bufferCompletedThunk(CUcontext ctx, uint32_t streamId,
-                                          uint8_t *buffer, size_t size, size_t validSize)
+                                                uint8_t *buffer, size_t size, size_t validSize)
 {
 #ifdef USE_CUPTI
     if (instance)
@@ -234,9 +237,9 @@ GmpResult GmpProfiler::popRange(const std::string &name, GmpProfileType type)
 #endif
 }
 
-void GmpProfiler::printProfilerRanges(GmpOutputKernelReduction option)
+void GmpProfiler::printProfilerRanges(std::string &configName, GmpOutputKernelReduction option)
 {
-    std::vector<const char*> c_metrics = createCStyleStringArray(metrics);
+    std::vector<const char *> c_metrics = createCStyleStringArray(metrics);
 #ifdef USE_CUPTI
     if (cuptiProfilerHost)
     {
@@ -253,7 +256,7 @@ void GmpProfiler::printProfilerRanges(GmpOutputKernelReduction option)
         GMP_API_CALL(checkActivityAndRangeResultMatch());
         auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
         cuptiProfilerHost->PrintProfilerRangesWithNames(activityAllRangeData);
-        produceOutput(option);
+        produceOutput(configName, option);
     }
     else
     {
@@ -404,7 +407,7 @@ std::vector<GmpMemRangeData> GmpProfiler::getMemoryActivity()
 #endif
 }
 
-void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
+void GmpProfiler::produceOutput(std::string &name, GmpOutputKernelReduction option)
 {
 #ifdef USE_CUPTI
     std::string path = "./output/result.csv";
@@ -462,6 +465,8 @@ void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
         return;
     }
 
+    outputFile << "Config Name," << name << "\n";
+
     auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
 
     size_t rangeProfileOffset = 0;
@@ -480,13 +485,13 @@ void GmpProfiler::produceOutput(GmpOutputKernelReduction option)
         switch (option)
         {
         case GmpOutputKernelReduction::SUM:
-            reducedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum, sumFunc);
+            reducedMetrics = cuptiProfilerHost->getRangeMetrics(rangeProfileOffset, kernelNum, sumFunc);
             break;
         case GmpOutputKernelReduction::MAX:
-            reducedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum, maxFunc);
+            reducedMetrics = cuptiProfilerHost->getRangeMetrics(rangeProfileOffset, kernelNum, maxFunc);
             break;
         case GmpOutputKernelReduction::MEAN:
-            reducedMetrics = cuptiProfilerHost->getMetrics(rangeProfileOffset, kernelNum, meanFunc);
+            reducedMetrics = cuptiProfilerHost->getRangeMetrics(rangeProfileOffset, kernelNum, meanFunc);
             break;
         default:
             break;
@@ -606,7 +611,7 @@ void GmpProfiler::bufferCompletedImpl(CUcontext ctx, uint32_t streamId,
 void GmpProfiler::init()
 {
     // create a copy of metrics as c strings
-    std::vector<const char*> c_metrics = createCStyleStringArray(metrics);
+    std::vector<const char *> c_metrics = createCStyleStringArray(metrics);
 
 #ifdef USE_CUPTI
 
@@ -691,17 +696,26 @@ GmpResult GmpProfiler::checkActivityAndRangeResultMatch()
     }
 
     auto allRangeActivityData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
-    size_t activityRecordCount = 0;
-    for (auto &rangeData : allRangeActivityData)
+    size_t activityRecordKernelCount = 0;
+    // Note that there might be entries with same range name because of replaying, but in the counter buffer, metrics have been aggregated.
+    std::set<std::string> uniqueRangeNames;
+    for (const auto &rangeData : allRangeActivityData)
     {
-        activityRecordCount += rangeData.kernelDataInRange.size();
+        if (uniqueRangeNames.find(rangeData.name) == uniqueRangeNames.end())
+        {
+            uniqueRangeNames.insert(rangeData.name);
+            std::cout << "Range Name: " << rangeData.name << ", Kernel Count: " << rangeData.kernelDataInRange.size() << std::endl;
+            activityRecordKernelCount+= rangeData.kernelDataInRange.size();
+        }
     }
 
-    size_t kernelInRangeProfilerRange = 0;
-    cuptiProfilerHost->GetNumOfRanges(counterDataImage, kernelInRangeProfilerRange);
-    if (activityRecordCount != kernelInRangeProfilerRange)
+    size_t kernelCountInRangeProfilerRange = 0;
+    cuptiProfilerHost->GetNumOfRanges(counterDataImage, kernelCountInRangeProfilerRange);
+    if (activityRecordKernelCount != kernelCountInRangeProfilerRange)
     {
         GMP_LOG_ERROR("Kernel activity range and range profiler range do not match.");
+        GMP_LOG_ERROR("Activity range kernel count: " + std::to_string(activityRecordKernelCount) +
+                      ", Range profiler kernel count: " + std::to_string(kernelCountInRangeProfilerRange));
         return GmpResult::ERROR;
     }
 #endif
@@ -714,4 +728,17 @@ bool GmpProfiler::isAllPassSubmitted()
     return rangeProfilerTargetPtr->IsAllPassSubmitted();
 #endif
     return true;
+}
+
+bool GmpProfiler::hasSubmittedAllPasses()
+{
+#ifdef USE_CUPTI
+    if (rangeProfilerTargetPtr)
+    {
+        return rangeProfilerTargetPtr->IsAllPassSubmitted();
+    }
+    return true;
+#else
+    return true;
+#endif
 }

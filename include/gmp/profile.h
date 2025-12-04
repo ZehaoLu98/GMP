@@ -79,7 +79,7 @@ public:
   GmpResult popRange(const std::string &name, GmpProfileType type);
 
   // Called after end of range profiling
-  void printProfilerRanges(GmpOutputKernelReduction option);
+  void printProfilerRanges(std::string& configName, GmpOutputKernelReduction option);
 
   // Print memory activity for all ranges
   void printMemoryActivity();
@@ -91,13 +91,15 @@ public:
 
   void decodeCounterData();
 
-  void produceOutput(GmpOutputKernelReduction option);
+  void produceOutput(std::string& configName, GmpOutputKernelReduction option);
 
   void addMetrics(const std::string &metric);
 
   void enable();
 
   void disable();
+
+  bool hasSubmittedAllPasses();
 
 private:
   static GmpProfiler *instance;
@@ -110,60 +112,59 @@ private:
 
   std::vector<std::string> metrics = {
       // Group 1
-      // "gpu__time_duration.sum",
-      // "gpu__time_duration.max",
-      // "gpc__cycles_elapsed.avg.per_second",
-      // "gpc__cycles_elapsed.max",
-      // "sm__cycles_active.max",
+      "gpu__time_duration.sum",
+      "gpc__cycles_elapsed.avg.per_second",
+      "gpc__cycles_elapsed.max",
+      "sm__cycles_active.max",
 
-      // // Group 2
-      // // Sub Group 1
-      // "smsp__inst_executed.sum",
-      // "smsp__sass_inst_executed_op_shared_ld.sum",
-      // "smsp__sass_inst_executed_op_shared_st.sum",
-      // "smsp__sass_inst_executed_op_global_ld.sum",
-      // "smsp__sass_inst_executed_op_global_st.sum",
-      // // Sub Group 2
-      // "sm__pipe_alu_cycles_active.max",
-      // "sm__pipe_fma_cycles_active.max",
-      // "sm__pipe_tensor_cycles_active.max",
-      // "sm__pipe_shared_cycles_active.max",
-      // // Sub Group 3
-      // "sm__sass_inst_executed_op_ldgsts_cache_access.sum",
-      // "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum",
+      // Group 2
+      // Sub Group 1
+      "smsp__inst_executed.sum",
+      "smsp__sass_inst_executed_op_shared_ld.sum",
+      "smsp__sass_inst_executed_op_shared_st.sum",
+      "smsp__sass_inst_executed_op_global_ld.sum",
+      "smsp__sass_inst_executed_op_global_st.sum",
+      // Sub Group 2
+      "sm__pipe_alu_cycles_active.max",
+      "sm__pipe_fma_cycles_active.max",
+      "sm__pipe_tensor_cycles_active.max",
+      "sm__pipe_shared_cycles_active.max",
+      // Sub Group 3
+      "sm__sass_inst_executed_op_ldgsts_cache_access.sum",
+      "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum",
 
-      // // Group 3
-      // // Sub Group 1
-      // "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum",
-      // // Sub Group 2
-      // "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
-      // // Sub Group 3
-      // "l1tex__t_requests_pipe_lsu_mem_global_op_st.sum",
-      // // Sub Group 4
-      // "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
-      // // Sub Group 5
-      // "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
-      // "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
-      // "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
-      // "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
-      // // Sub Group 6
-      // "lts__t_requests_srcunit_tex_op_read.sum",
-      // "lts__t_requests_srcunit_tex_op_write.sum",
-      // "dram__sectors_read.sum",
-      // "dram__sectors_write.sum",
-      // // Sub Group 7
-      // "lts__t_requests_srcunit_l1_op_read.sum",
-      // "lts__t_requests_srcunit_l1_op_write.sum",
+      // Group 3
+      // Sub Group 1
+      "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum",
+      // Sub Group 2
+      "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
+      // Sub Group 3
+      "l1tex__t_requests_pipe_lsu_mem_global_op_st.sum",
+      // Sub Group 4
+      "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
+      // Sub Group 5
+      "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
+      "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
+      "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
+      "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
+      // Sub Group 6
+      "lts__t_requests_srcunit_tex_op_read.sum",
+      "lts__t_requests_srcunit_tex_op_write.sum",
+      "dram__sectors_read.sum",
+      "dram__sectors_write.sum",
+      // Sub Group 7
+      "lts__t_requests_srcunit_l1_op_read.sum",
+      "lts__t_requests_srcunit_l1_op_write.sum",
 
-      // // Group 4
-      // // Sub Group 1
-      // "smsp__average_warp_latency_per_inst_issued.ratio",
-      // // Sub Group 2
-      // "smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio",
-      // "smsp__average_warps_issue_stalled_wait_per_issue_active.ratio",
-      // // Sub Group 3
-      // "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio",
-      // "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio",
+      // Group 4
+      // Sub Group 1
+      "smsp__average_warp_latency_per_inst_issued.ratio",
+      // Sub Group 2
+      "smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio",
+      "smsp__average_warps_issue_stalled_wait_per_issue_active.ratio",
+      // Sub Group 3
+      "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio",
+      "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio",
   };
 #ifdef USE_CUPTI
   RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;

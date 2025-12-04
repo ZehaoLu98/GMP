@@ -1,10 +1,8 @@
+#include <cassert>
+#include <cupti.h>
 #include "gmp/session_manager.h"
 #include "gmp/log.h"
-#include <cassert>
-
-#ifdef USE_CUPTI
-#include <cupti.h>
-#endif
+#include "gmp/profile.h"
 
 // SessionManager method implementations
 std::string SessionManager::getSessionName(GmpProfileType type)
@@ -46,7 +44,7 @@ GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpP
     else
     {
         GMP_LOG_WARNING("Session " + ActivityMap[type].back()->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " is already active. Cannot add a new session.");
-        return GmpResult::ERROR;
+        return GmpResult::WARNING;
     }
 }
 

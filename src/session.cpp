@@ -1,4 +1,5 @@
 #include "gmp/session.h"
+#include "gmp/profile.h"
 
 // GmpProfileSession method implementations
 bool GmpProfileSession::isActive() const { 
@@ -23,18 +24,6 @@ const ApiRuntimeRecord &GmpProfileSession::getRuntimeData() const
 {
     return runtimeData;
 }
-
-#ifdef USE_CUPTI
-CUpti_SubscriberHandle GmpProfileSession::getRuntimeSubscriberHandle() const
-{
-    return runtimeSubscriber;
-}
-
-void GmpProfileSession::setRuntimeHandle(CUpti_SubscriberHandle runtimeSubscriber)
-{
-    this->runtimeSubscriber = runtimeSubscriber;
-}
-#endif
 
 void GmpProfileSession::pushKernelData(const GmpKernelData &data)
 {
