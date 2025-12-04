@@ -14,15 +14,12 @@
 #include "gmp/range_profiling.h"
 #include "gmp/data_struct.h"
 #include "gmp/log.h"
+#include "gmp/session.h"
+#include "gmp/session_manager.h"
+#include "gmp/nvtx_range_manager.h"
 
-// #define USE_CUPTI
-#define ENABLE_NVTX
-
-#ifdef ENABLE_NVTX
-#include <nvtx3/nvtx3.hpp>
-#include <stack>
-#include <unordered_map>
-#endif
+#define USE_CUPTI
+// #define ENABLE_NVTX
 
 #ifdef USE_CUPTI
 
@@ -54,246 +51,6 @@
   } while (0)
 #endif
 
-// Abstract Node
-class GmpProfileSession
-{
-  using time_t = std::chrono::microseconds;
-
-public:
-  GmpProfileSession(const std::string &session_name)
-      : sessionName(session_name) {}
-  virtual void report() const = 0;
-  bool isActive() const { return is_active; }
-  void deactivate() { is_active = false; }
-  std::string getSessionName()
-  {
-    return sessionName;
-  }
-
-  void setRuntimeData(const ApiRuntimeRecord &data)
-  {
-    runtimeData = data;
-  }
-
-  const ApiRuntimeRecord &getRuntimeData() const
-  {
-    return runtimeData;
-  }
-
-  CUpti_SubscriberHandle getRuntimeSubscriberHandle() const
-  {
-    return runtimeSubscriber;
-  }
-
-  void setRuntimeHandle(CUpti_SubscriberHandle runtimeSubscriber)
-  {
-    this->runtimeSubscriber = runtimeSubscriber;
-  }
-
-  void pushKernelData(const GmpKernelData &data)
-  {
-    kernelData.push_back(data);
-  }
-
-  void pushMemData(const GmpMemData &data)
-  {
-    memData.push_back(data);
-  }
-
-  std::vector<GmpKernelData> getKernelData() const
-  {
-    return kernelData;
-  }
-
-  std::vector<GmpMemData> getMemData() const
-  {
-    return memData;
-  }
-
-protected:
-  std::string sessionName;      // Name of the profiling session
-  ApiRuntimeRecord runtimeData; // Data structure to hold timing information
-  CUpti_SubscriberHandle runtimeSubscriber;
-  std::vector<GmpKernelData> kernelData; // Names of kernels launched in this session
-  std::vector<GmpMemData> memData;       // Memory operations in this session
-  bool is_active = true;
-  CUcontext context = 0;
-};
-
-// Concrete Node
-class GmpConcurrentKernelSession : public GmpProfileSession
-{
-public:
-  GmpConcurrentKernelSession(const std::string &sessionName)
-      : GmpProfileSession(sessionName) {}
-
-  void report() const override
-  {
-    // GMP_LOG_DEBUG("Session " + sessionName.c_str() + " captured " + std::to_string(num_calls) + " calls");
-  }
-  unsigned long long num_calls;
-
-private:
-};
-
-class GmpMemSession : public GmpProfileSession
-{
-public:
-  GmpMemSession(const std::string &sessionName)
-      : GmpProfileSession(sessionName) {}
-
-  void report() const override
-  {
-    // GMP_LOG_DEBUG("Session " + sessionName.c_str() + " captured " + std::to_string(num_calls) + " calls");
-  }
-  unsigned long long num_calls;
-
-private:
-};
-
-class SessionManager
-{
-public:
-  SessionManager() = default;
-
-  std::string getSessionName(GmpProfileType type)
-  {
-    if (ActivityMap.find(type) != ActivityMap.end() && !ActivityMap[type].empty())
-    {
-      return ActivityMap[type].back()->getSessionName();
-    }
-    else
-    {
-      GMP_LOG_ERROR("No active session of type " + std::to_string(static_cast<int>(type)) + " found.");
-      return "";
-    }
-  }
-
-  template <typename DerivedSession>
-  using AccumulateFunc = std::function<void(DerivedSession *)>;
-
-  // Apply the provided callback function to the active session of that type.
-  template <typename DerivedSession>
-  GmpResult accumulate(GmpProfileType type, AccumulateFunc<DerivedSession> callback)
-  {
-    if (!ActivityMap[type].empty())
-    {
-      auto &sessionPtr = ActivityMap[type].back();
-      if (auto derivedSessionPtr = dynamic_cast<DerivedSession *>(sessionPtr.get()))
-      {
-        if (sessionPtr->isActive())
-        {
-          callback(derivedSessionPtr);
-        }
-        return GmpResult::SUCCESS;
-      }
-      else
-      {
-        return GmpResult::ERROR;
-      }
-    }
-    return GmpResult::SUCCESS;
-  }
-
-  GmpResult reportAllSessions()
-  {
-    for (auto &pair : ActivityMap)
-    {
-      for (const auto &sessionPtr : pair.second)
-      {
-        sessionPtr->report();
-      }
-    }
-    return GmpResult::SUCCESS;
-  }
-
-  GmpResult startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr);
-
-  GmpResult endSession(GmpProfileType type);
-
-  std::vector<GmpRangeData> getAllKernelDataOfType(GmpProfileType type)
-  {
-    std::vector<GmpRangeData> allKernelData;
-    for (const auto &sessionPtr : ActivityMap[type])
-    {
-      auto dataInRange = sessionPtr->getKernelData();
-      allKernelData.push_back({sessionPtr->getSessionName(), dataInRange});
-    }
-    return allKernelData;
-  }
-
-  std::vector<GmpMemRangeData> getAllMemDataOfType(GmpProfileType type)
-  {
-    std::vector<GmpMemRangeData> allMemData;
-    for (const auto &sessionPtr : ActivityMap[type])
-    {
-      auto dataInRange = sessionPtr->getMemData();
-      allMemData.push_back({sessionPtr->getSessionName(), dataInRange});
-    }
-    return allMemData;
-  }
-
-private:
-  std::map<GmpProfileType, std::vector<std::unique_ptr<GmpProfileSession>>> ActivityMap;
-};
-#endif
-
-#ifdef ENABLE_NVTX
-// NVTX Range Manager - independent of CUPTI
-class NvtxRangeManager {
-public:
-  NvtxRangeManager() = default;
-  ~NvtxRangeManager() = default;
-
-  // Start an NVTX range and return its ID
-  nvtxRangeId_t startRange(const std::string& name) {
-    nvtxRangeId_t rangeId = nvtxRangeStartA(name.c_str());
-    activeRanges_.push(rangeId);
-    rangeNameMap_[rangeId] = name;
-    return rangeId;
-  }
-
-  // End the most recent NVTX range
-  bool endRange(const std::string& expectedName = "") {
-    if (activeRanges_.empty()) {
-      return false;
-    }
-    
-    nvtxRangeId_t rangeId = activeRanges_.top();
-    activeRanges_.pop();
-    
-    // Optional: verify the name matches what we expect
-    if (!expectedName.empty() && rangeNameMap_[rangeId] != expectedName) {
-      // Log warning but still end the range
-      // Note: In a production system, you might want to handle this differently
-    }
-    
-    nvtxRangeEnd(rangeId);
-    rangeNameMap_.erase(rangeId);
-    return true;
-  }
-
-  // Get the number of active ranges
-  size_t getActiveRangeCount() const {
-    return activeRanges_.size();
-  }
-
-  // Clear all ranges (emergency cleanup)
-  void clearAllRanges() {
-    while (!activeRanges_.empty()) {
-      nvtxRangeId_t rangeId = activeRanges_.top();
-      activeRanges_.pop();
-      nvtxRangeEnd(rangeId);
-      rangeNameMap_.erase(rangeId);
-    }
-  }
-
-private:
-  std::stack<nvtxRangeId_t> activeRanges_;
-  std::unordered_map<nvtxRangeId_t, std::string> rangeNameMap_;
-};
-#endif
-
 // Singleton Profiler Class, exposes high-level profiling APIs
 class GmpProfiler
 {
@@ -307,28 +64,11 @@ public:
 
   void init();
 
-  static GmpProfiler *getInstance()
-  {
-    if (!instance)
-    {
-      instance = new GmpProfiler();
-    }
-    return instance;
-  }
+  static GmpProfiler *getInstance();
 
-  void startRangeProfiling()
-  {
-#ifdef USE_CUPTI
-    CUPTI_API_CALL(rangeProfilerTargetPtr->StartRangeProfiler());
-#endif
-  }
+  void startRangeProfiling();
 
-  void stopRangeProfiling()
-  {
-#ifdef USE_CUPTI
-    CUPTI_API_CALL(rangeProfilerTargetPtr->StopRangeProfiler());
-#endif
-  }
+  void stopRangeProfiling();
 
   // GmpResult RangeProfile(char *name, std::function<void()> func);
 
@@ -347,39 +87,17 @@ public:
   // Get all memory activity data
   std::vector<GmpMemRangeData> getMemoryActivity();
 
-  bool isAllPassSubmitted()
-  {
-#ifdef USE_CUPTI
-    return rangeProfilerTargetPtr->IsAllPassSubmitted();
-#endif
-    return true;
-  }
+  bool isAllPassSubmitted();
 
-  void decodeCounterData()
-  {
-#ifdef USE_CUPTI
-    CUPTI_API_CALL(rangeProfilerTargetPtr->DecodeCounterData());
-#endif
-  }
+  void decodeCounterData();
 
   void produceOutput(GmpOutputKernelReduction option);
 
-  void addMetrics(const std::string &metric)
-  {
-#ifdef USE_CUPTI
-    metrics.push_back(metric);
-#endif
-  }
+  void addMetrics(const std::string &metric);
 
-  void enable()
-  {
-    isEnabled = true;
-  }
+  void enable();
 
-  void disable()
-  {
-    isEnabled = false;
-  }
+  void disable();
 
 private:
   static GmpProfiler *instance;
@@ -455,22 +173,10 @@ private:
 
 #endif
 
-  static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
-  {
-#ifdef USE_CUPTI
-    if (instance)
-      instance->bufferRequestedImpl(buffer, size, maxNumRecords);
-#endif
-  }
+  static void CUPTIAPI bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords);
 
   static void CUPTIAPI bufferCompletedThunk(CUcontext ctx, uint32_t streamId,
-                                            uint8_t *buffer, size_t size, size_t validSize)
-  {
-#ifdef USE_CUPTI
-    if (instance)
-      instance->bufferCompletedImpl(ctx, streamId, buffer, size, validSize);
-#endif
-  }
+                                            uint8_t *buffer, size_t size, size_t validSize);
 
   void bufferRequestedImpl(uint8_t **buffer, size_t *size, size_t *maxNumRecords);
 
@@ -484,4 +190,5 @@ private:
 
   GmpResult popRangeProfilerRange();
 };
+#endif // GMP_PROFILE_H
 #endif // GMP_PROFILE_H

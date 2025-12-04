@@ -1,5 +1,7 @@
 #include "gmp/profile.h"
+#ifdef ENABLE_NVTX
 #include <nvtx3/nvtx3.hpp>
+#endif
 
 GmpProfiler *GmpProfiler::instance = nullptr;
 
@@ -12,54 +14,70 @@ std::vector<const char*> createCStyleStringArray(const std::vector<std::string>&
     return cStrArray;
 }
 
-
-#ifdef USE_CUPTI
-GmpResult SessionManager::startSession(GmpProfileType type, std::unique_ptr<GmpProfileSession> sessionPtr)
+// GmpProfiler method implementations
+GmpProfiler *GmpProfiler::getInstance()
 {
-    assert(sessionPtr != nullptr);
-    if (ActivityMap[type].empty() || !ActivityMap[type].back()->isActive())
+    if (!instance)
     {
-        GMP_LOG_DEBUG("Session " + sessionPtr->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " added.");
-
-        ActivityMap[type].push_back(std::move(sessionPtr));
-
-        return GmpResult::SUCCESS;
+        instance = new GmpProfiler();
     }
-    else
-    {
-        GMP_LOG_WARNING("Session " + ActivityMap[type].back()->getSessionName() + " of type " + std::to_string(static_cast<int>(type)) + " is already active. Cannot add a new session.");
-        return GmpResult::ERROR;
-    }
+    return instance;
 }
 
-GmpResult SessionManager::endSession(GmpProfileType type)
+void GmpProfiler::startRangeProfiling()
 {
 #ifdef USE_CUPTI
-    GMP_LOG_DEBUG("Ending session");
-    if (ActivityMap[type].empty())
-    {
-        GMP_LOG_ERROR("No active session of type " + std::to_string(static_cast<int>(type)) + " found.");
-        return GmpResult::ERROR;
-    }
-    auto &sessionPtr = ActivityMap[type].back();
-    if (sessionPtr->isActive())
-    {
-        // CUpti_SubscriberHandle subscriber = sessionPtr->getRuntimeSubscriberHandle();
-        // CUPTI_CALL(cuptiUnsubscribe(subscriber));
-
-        sessionPtr->report();
-        sessionPtr->deactivate();
-        GMP_LOG_DEBUG("Session of type " + std::to_string(static_cast<int>(type)) + " ended.");
-        return GmpResult::SUCCESS;
-    }
-    GMP_LOG_WARNING("Session of type " + std::to_string(static_cast<int>(type)) + " is already inactive.");
-    return GmpResult::WARNING;
-#else
-    return GmpResult::SUCCESS;
+    CUPTI_API_CALL(rangeProfilerTargetPtr->StartRangeProfiler());
 #endif
 }
 
+void GmpProfiler::stopRangeProfiling()
+{
+#ifdef USE_CUPTI
+    CUPTI_API_CALL(rangeProfilerTargetPtr->StopRangeProfiler());
 #endif
+}
+
+void GmpProfiler::decodeCounterData()
+{
+#ifdef USE_CUPTI
+    CUPTI_API_CALL(rangeProfilerTargetPtr->DecodeCounterData());
+#endif
+}
+
+void GmpProfiler::addMetrics(const std::string &metric)
+{
+#ifdef USE_CUPTI
+    metrics.push_back(metric);
+#endif
+}
+
+void GmpProfiler::enable()
+{
+    isEnabled = true;
+}
+
+void GmpProfiler::disable()
+{
+    isEnabled = false;
+}
+
+void CUPTIAPI GmpProfiler::bufferRequestedThunk(uint8_t **buffer, size_t *size, size_t *maxNumRecords)
+{
+#ifdef USE_CUPTI
+    if (instance)
+        instance->bufferRequestedImpl(buffer, size, maxNumRecords);
+#endif
+}
+
+void CUPTIAPI GmpProfiler::bufferCompletedThunk(CUcontext ctx, uint32_t streamId,
+                                          uint8_t *buffer, size_t size, size_t validSize)
+{
+#ifdef USE_CUPTI
+    if (instance)
+        instance->bufferCompletedImpl(ctx, streamId, buffer, size, validSize);
+#endif
+}
 
 GmpProfiler::GmpProfiler()
 {
@@ -688,4 +706,12 @@ GmpResult GmpProfiler::checkActivityAndRangeResultMatch()
     }
 #endif
     return GmpResult::SUCCESS;
+}
+
+bool GmpProfiler::isAllPassSubmitted()
+{
+#ifdef USE_CUPTI
+    return rangeProfilerTargetPtr->IsAllPassSubmitted();
+#endif
+    return true;
 }
