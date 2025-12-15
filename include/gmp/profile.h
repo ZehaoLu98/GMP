@@ -18,7 +18,7 @@
 #include "gmp/session_manager.h"
 #include "gmp/nvtx_range_manager.h"
 
-#define USE_CUPTI
+// #define USE_CUPTI
 // #define ENABLE_NVTX
 
 #ifdef USE_CUPTI
@@ -50,6 +50,7 @@
     GMP_LOG("INFO") << name << " finished in " << duration << " microseconds." << std::endl;    \
   } while (0)
 #endif
+#endif // GMP_PROFILE_H
 
 // Singleton Profiler Class, exposes high-level profiling APIs
 class GmpProfiler
@@ -115,56 +116,31 @@ private:
       "gpu__time_duration.sum",
       "gpc__cycles_elapsed.avg.per_second",
       "gpc__cycles_elapsed.max",
-      "sm__cycles_active.max",
-
-      // Group 2
-      // Sub Group 1
       "smsp__inst_executed.sum",
+      "smsp__cycles_active.sum",
+      "smsp__cycles_active.avg",
       "smsp__sass_inst_executed_op_shared_ld.sum",
       "smsp__sass_inst_executed_op_shared_st.sum",
       "smsp__sass_inst_executed_op_global_ld.sum",
       "smsp__sass_inst_executed_op_global_st.sum",
-      // Sub Group 2
-      "sm__pipe_alu_cycles_active.max",
-      "sm__pipe_fma_cycles_active.max",
-      "sm__pipe_tensor_cycles_active.max",
-      "sm__pipe_shared_cycles_active.max",
-      // Sub Group 3
-      "sm__sass_inst_executed_op_ldgsts_cache_access.sum",
-      "sm__sass_inst_executed_op_ldgsts_cache_bypass.sum",
-
-      // Group 3
-      // Sub Group 1
-      "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum",
-      // Sub Group 2
-      "l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum",
-      // Sub Group 3
-      "l1tex__t_requests_pipe_lsu_mem_global_op_st.sum",
-      // Sub Group 4
-      "l1tex__t_sectors_pipe_lsu_mem_global_op_st.sum",
-      // Sub Group 5
-      "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
-      "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_access.sum",
-      "sm__sass_l1tex_t_requests_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
-      "sm__sass_l1tex_t_sectors_pipe_lsu_mem_global_op_ldgsts_cache_bypass.sum",
-      // Sub Group 6
-      "lts__t_requests_srcunit_tex_op_read.sum",
-      "lts__t_requests_srcunit_tex_op_write.sum",
+      "sm__warps_active.sum",
+      "smsp__warps_eligible.sum",
+      "sm__cycles_active.sum",
+      "sm__cycles_active.avg",
       "dram__sectors_read.sum",
       "dram__sectors_write.sum",
-      // Sub Group 7
-      "lts__t_requests_srcunit_l1_op_read.sum",
-      "lts__t_requests_srcunit_l1_op_write.sum",
-
-      // Group 4
-      // Sub Group 1
-      "smsp__average_warp_latency_per_inst_issued.ratio",
-      // Sub Group 2
-      "smsp__average_warps_issue_stalled_math_pipe_throttle_per_issue_active.ratio",
-      "smsp__average_warps_issue_stalled_wait_per_issue_active.ratio",
-      // Sub Group 3
-      "smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio",
-      "smsp__average_warps_issue_stalled_short_scoreboard_per_issue_active.ratio",
+      "smsp__warps_issue_stalled_math_pipe_throttle.sum",
+      "smsp__warps_issue_stalled_mio_throttle.sum",
+      "smsp__warps_issue_stalled_long_scoreboard.sum",
+      "smsp__pipe_alu_cycles_active.sum",
+      "smsp__pipe_fma_cycles_active.sum",
+      "smsp__pipe_fp64_cycles_active.sum",
+      "smsp__pipe_shared_cycles_active.sum",
+      "smsp__pipe_tensor_cycles_active.sum",
+      "l1tex__t_sector_hit_rate.pct",
+      "lts__t_sector_hit_rate.pct",
+      "l1tex__throughput.avg.pct_of_peak_sustained_active",
+      "lts__throughput.avg.pct_of_peak_sustained_active",
   };
 #ifdef USE_CUPTI
   RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
@@ -191,5 +167,4 @@ private:
 
   GmpResult popRangeProfilerRange();
 };
-#endif // GMP_PROFILE_H
 #endif // GMP_PROFILE_H

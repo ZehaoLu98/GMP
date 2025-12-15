@@ -468,7 +468,6 @@ void GmpProfiler::produceOutput(std::string &name, GmpOutputKernelReduction opti
     outputFile << "Config Name," << name << "\n";
 
     auto activityAllRangeData = sessionManager.getAllKernelDataOfType(GmpProfileType::CONCURRENT_KERNEL);
-
     size_t rangeProfileOffset = 0;
     for (int activityRangeIdx = 0; activityRangeIdx < activityAllRangeData.size(); activityRangeIdx++)
     {
@@ -653,6 +652,7 @@ void GmpProfiler::init()
     config.minNestingLevel = MIN_NESTING_LEVEL;
     config.numOfNestingLevel = MAX_NUM_NESTING_LEVEL;
 
+    cudaFree(0);
     // Retain current context
     CUcontext cuContext;
     DRIVER_API_CALL(cuDevicePrimaryCtxRetain(&cuContext, cuDevice));
