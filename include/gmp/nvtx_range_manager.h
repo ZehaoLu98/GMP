@@ -1,5 +1,6 @@
 #ifndef GMP_NVTX_RANGE_MANAGER_H
 #define GMP_NVTX_RANGE_MANAGER_H
+#define ENABLE_NVTX
 
 #ifdef ENABLE_NVTX
 #include <nvtx3/nvtx3.hpp>

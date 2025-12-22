@@ -7,6 +7,7 @@ add_library(gmp STATIC ${SRC})
 target_include_directories(gmp
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../NVTX/c/include>
     $<INSTALL_INTERFACE:include>
 )
 

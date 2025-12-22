@@ -18,8 +18,8 @@
 #include "gmp/session_manager.h"
 #include "gmp/nvtx_range_manager.h"
 
-// #define USE_CUPTI
-// #define ENABLE_NVTX
+#define USE_CUPTI
+#define ENABLE_NVTX
 
 #ifdef USE_CUPTI
 
@@ -124,6 +124,7 @@ private:
       "smsp__sass_inst_executed_op_global_ld.sum",
       "smsp__sass_inst_executed_op_global_st.sum",
       "sm__warps_active.sum",
+      "smsp__warps_active.sum",
       "smsp__warps_eligible.sum",
       "sm__cycles_active.sum",
       "sm__cycles_active.avg",
@@ -141,6 +142,8 @@ private:
       "lts__t_sector_hit_rate.pct",
       "l1tex__throughput.avg.pct_of_peak_sustained_active",
       "lts__throughput.avg.pct_of_peak_sustained_active",
+      "dram__throughput.avg.pct_of_peak_sustained_active",
+      
   };
 #ifdef USE_CUPTI
   RangeProfilerTargetPtr rangeProfilerTargetPtr = nullptr;
